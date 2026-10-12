@@ -739,5 +739,80 @@
       "screen": "setup",
       "fileStillThere": 2
     }
+  },
+  "start": {
+    "setupButton": "はじめる（保存ファイルを作る）",
+    "withFile": {
+      "saveInfo": {
+        "text": "保存先：ファイル「regress-vault-3.json」",
+        "warn": false
+      },
+      "notice": null,
+      "fileEntries": 0,
+      "fileSettings": {
+        "lockMinutes": 5
+      },
+      "foot": "コピーしたパスワードは 30 秒後にクリップボードから消します（この画面を開いているとき）。5 分間操作がないと自動でロックします。"
+    },
+    "unsaved": {
+      "text": "最新の内容が、保存ファイル「regress-vault-3.json」に保存されていません。",
+      "buttons": [
+        "今の内容でファイルに保存する",
+        "ロックしてファイルから開き直す"
+      ]
+    },
+    "savedNow": {
+      "notice": null,
+      "saveInfo": {
+        "text": "保存先：ファイル「regress-vault-3.json」",
+        "warn": false
+      },
+      "toast": "保存ファイル「regress-vault-3.json」に保存しました",
+      "inFile": [
+        "ダミーのE"
+      ]
+    },
+    "lockDefault": "5",
+    "lock1": {
+      "value": "1",
+      "foot": "コピーしたパスワードは 30 秒後にクリップボードから消します（この画面を開いているとき）。1 分間操作がないと自動でロックします。"
+    },
+    "lock0": {
+      "value": "1",
+      "foot": "コピーしたパスワードは 30 秒後にクリップボードから消します（この画面を開いているとき）。1 分間操作がないと自動でロックします。"
+    },
+    "lock100": {
+      "value": "60",
+      "foot": "コピーしたパスワードは 30 秒後にクリップボードから消します（この画面を開いているとき）。60 分間操作がないと自動でロックします。"
+    },
+    "lock15": {
+      "value": "15",
+      "foot": "コピーしたパスワードは 30 秒後にクリップボードから消します（この画面を開いているとき）。15 分間操作がないと自動でロックします。"
+    },
+    "lockInFile": {
+      "lockMinutes": 15
+    },
+    "lockAfterReopen": "コピーしたパスワードは 30 秒後にクリップボードから消します（この画面を開いているとき）。15 分間操作がないと自動でロックします。",
+    "cancelNo": "setup",
+    "localOnly": {
+      "notice": {
+        "text": "このブラウザの中だけに保存しています。ブラウザのデータを消すと消えるので、保存ファイルを作ってください。",
+        "buttons": [
+          "保存ファイルを作る",
+          "今あるファイルを使う"
+        ]
+      },
+      "saveInfo": {
+        "text": "保存先：このブラウザの中",
+        "warn": false
+      }
+    },
+    "afterCreate": {
+      "notice": null,
+      "saveInfo": {
+        "text": "保存先：ファイル「regress-vault-4.json」",
+        "warn": false
+      }
+    }
   }
 }

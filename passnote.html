@@ -112,6 +112,11 @@
   .save-info.warn { color: var(--danger); font-weight: 600; white-space: normal; }
   .menu-sec { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
   .menu-sec h3 { margin: 0 0 4px; font-size: 15px; }
+  /* 最新の内容が保存ファイルに入っていないときのお知らせ（一覧の上） */
+  .notice { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: -6px 0 12px; padding: 8px 12px;
+    border: 1px solid var(--danger); border-radius: 8px; background: var(--panel); color: var(--danger); font-size: 13px; }
+  .notice .notice-text { flex: 1 1 280px; }
+  .notice button { padding: 3px 10px; font-size: 13px; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -120,7 +125,8 @@
 <!-- 初回：マスターパスワードの設定 -->
 <section id="setup" class="center hidden">
   <h1><span class="app-name">接続情報</span>をはじめる</h1>
-  <p class="note">最初に<strong>マスターパスワード</strong>を決めます。中身はこのパスワードで暗号化して、このブラウザの中に保存します。</p>
+  <p class="note file-only">最初に<strong>マスターパスワード</strong>を決めて、中身を保存する<strong>ファイルの場所</strong>を選びます。中身はこのパスワードで暗号化して、そのファイルに保存します（ブラウザのデータを消しても消えません）。</p>
+  <p class="note no-file hidden">最初に<strong>マスターパスワード</strong>を決めます。中身はこのパスワードで暗号化して、このブラウザの中に保存します（このブラウザでは保存ファイルが使えないので、こまめにバックアップを保存してください）。</p>
   <p class="note"><strong>マスターパスワードを忘れると、中身は二度と取り出せません。</strong></p>
   <label for="setup-pw1">マスターパスワード</label>
   <input id="setup-pw1" type="password" autocomplete="new-password">
@@ -162,10 +168,11 @@
     <button id="btn-menu">その他</button>
     <button id="btn-lock">ロック</button>
   </header>
+  <div class="notice hidden" id="notice" role="status"><span class="notice-text" id="notice-text"></span></div>
   <div class="filter" id="type-filter" role="group" aria-label="種類で絞り込む"></div>
   <div id="list" class="list"></div>
   <div class="foot">
-    <p class="note">コピーしたパスワードは 30 秒後にクリップボードから消します（この画面を開いているとき）。5 分間操作がないと自動でロックします。</p>
+    <p class="note" id="foot-note"></p>
     <span class="save-info" id="save-info"></span>
     <span class="version"></span>
   </div>
@@ -233,6 +240,11 @@
     <button id="m-change">マスターパスワードを変更</button>
   </div>
   <div class="menu-sec">
+    <h3>自動ロック</h3>
+    <label class="row" style="margin:4px 0 0; color:var(--text); font-size:14px">操作がないとロックするまで
+      <input type="number" id="m-lock-min" min="1" max="60" step="1" style="width:6em"> 分（1〜60）</label>
+  </div>
+  <div class="menu-sec">
     <h3>保存先</h3>
     <p class="note" id="m-file-status"></p>
     <div class="file-only" style="display:grid; gap:8px; margin-top:8px">
@@ -290,11 +302,11 @@
 // 暗号化したものだけを localStorage に保存する。平文は画面を開いている間のメモリにしか置かない。
 // https://github.com/oha-yo/passnote
 const APP_NAME = '接続情報';             // 画面に出す名前（仮称）。変えるときはここだけ直す
-const VERSION = '1.2.0';                 // 変えたら CHANGELOG.md もそろえる
+const VERSION = '1.3.0';                 // 変えたら CHANGELOG.md もそろえる
 const STORE_KEY = 'pass-note-vault-v1';   // 保存のキーは、すでにデータが入っているので変えない
 const ITERATIONS = 600000;
 const CLIPBOARD_CLEAR_MS = 30000;
-const IDLE_LOCK_MS = 5 * 60 * 1000;
+const DEFAULT_SETTINGS = { lockMinutes: 5 };   // 設定（暗号化した中身の中に入れる。保存ファイルと一緒に動く）
 const RESET_WORD = '初期化する';          // 初期化の確認に入れてもらう言葉
 
 // ---- 小さな道具 ----
@@ -361,9 +373,10 @@ async function deriveKey(password, salt) {
 }
 
 // 保存の形式：{ app, v, iter, salt, iv, ct }（すでにユーザーのデータが入っているので変えない）
-async function sealVault(key, salt, entries) {
+// 暗号化する中身は { entries, settings }
+async function sealVault(key, salt, data) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify({ entries })));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(data)));
   return { app: 'pass-note', v: 1, iter: ITERATIONS, salt: toB64(salt), iv: toB64(iv), ct: toB64(new Uint8Array(ct)) };
 }
 
@@ -375,7 +388,8 @@ async function openVault(blob, password) {
   try {
     plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(blob.iv) }, key, fromB64(blob.ct));
   } catch { throw new Error('パスワードが違います'); }
-  return { key, salt, entries: JSON.parse(dec.decode(plain)).entries || [] };
+  const data = JSON.parse(dec.decode(plain));
+  return { key, salt, entries: data.entries || [], settings: { ...DEFAULT_SETTINGS, ...(data.settings || {}) } };
 }
 
 // ---- 保存（localStorage の読み書きは、ここだけで行う） ----
@@ -460,12 +474,53 @@ function renderSaveInfo() {
   status.textContent = !name ? '今は、このブラウザの中（localStorage）にだけ保存しています。ブラウザのデータを消すと消えるので、ファイルに保存するのがおすすめです。'
     : `ファイル「${name}」に保存しています（変更のたびに自動で上書き）。このブラウザの中にも写しを残しています。`;
   $('m-file-off').disabled = !name;
+  renderNotice();
 }
 
-let session = null;      // 開いている間だけ持つ { key, salt, entries }
+// 最新の内容が保存ファイルに入っていないあいだ、一覧の上にお知らせを出す（保存できたら消える）
+function renderNotice() {
+  const box = $('notice');
+  if (!session) return box.classList.add('hidden');
+  const name = vaultFile.handle && vaultFile.handle.name;
+  let text = '', buttons = [];
+  if (!canUseFile) {
+    if (!backedUpSinceChange) {
+      text = 'このブラウザでは保存ファイルが使えません（Chrome・Edge で使えます）。ブラウザのデータを消すと消えるので、変更したらバックアップを保存してください。';
+      buttons = [['バックアップを保存', () => $('m-export').click()]];
+    }
+  } else if (!name) {
+    text = 'このブラウザの中だけに保存しています。ブラウザのデータを消すと消えるので、保存ファイルを作ってください。';
+    buttons = [['保存ファイルを作る', () => $('m-file-new').click()], ['今あるファイルを使う', () => $('m-file-open').click()]];
+  } else if (vaultFile.unavailable) {
+    text = `最新の内容が、保存ファイル「${name}」に保存されていません。`;
+    buttons = [['今の内容でファイルに保存する', saveNowToFile], ['ロックしてファイルから開き直す', lock]];
+  }
+  box.classList.toggle('hidden', !text);
+  $('notice-text').textContent = text;
+  box.replaceChildren($('notice-text'), ...buttons.map(([label, onclick]) => el('button', { type: 'button', onclick }, label)));
+}
+// 今の内容で、保存ファイルを上書きする（ほかで変更されていても、こちらを正とする）
+async function saveNowToFile() {
+  const h = vaultFile.handle;
+  try {
+    if (!(await filePermission(h, true))) return toast('保存ファイルを使う許可がありません');
+    vaultFile.lastModified = await writeVaultFile(h, JSON.stringify(await sealVault(session.key, session.salt, vaultData())));
+    vaultFile.unavailable = false;
+    renderSaveInfo();
+    toast(`保存ファイル「${h.name}」に保存しました`);
+  } catch (e) {
+    toast(e.name === 'NotFoundError' ? `保存ファイル「${h.name}」が見つかりません。「保存ファイルを作る」で作り直してください。` : '保存ファイルに書き込めませんでした');
+    if (e.name === 'NotFoundError') { await forgetVaultFile(); }
+  }
+}
+
+let session = null;      // 開いている間だけ持つ { key, salt, entries, settings }
+const vaultData = () => ({ entries: session.entries, settings: session.settings });
+let backedUpSinceChange = false;   // 保存ファイルが使えないブラウザで、バックアップを保存してから変更がないか
 // 保存する。保存ファイルに書けなかったときは、その理由を返す（書けたとき・ファイルを使っていないときは ''）
 async function persist() {
-  const blob = await sealVault(session.key, session.salt, session.entries);
+  backedUpSinceChange = false;
+  const blob = await sealVault(session.key, session.salt, vaultData());
   try { store.write(blob); }
   catch { toast('保存できませんでした。バックアップを保存してください。'); }
   return vaultFile.handle && !vaultFile.unavailable ? saveToFile(JSON.stringify(blob)) : '';
@@ -558,17 +613,31 @@ $('setup-ok').onclick = async () => {
   const p1 = $('setup-pw1').value, p2 = $('setup-pw2').value;
   if (p1.length < 8) return $('setup-error').textContent = '8 文字以上にしてください。';
   if (p1 !== p2) return $('setup-error').textContent = '2 つの入力が一致しません。';
+  // 保存ファイルの場所を先に聞く（ブラウザは、ボタンを押した直後でないと、ファイルを選ぶ画面を出さないため）
+  let handle = null;
+  if (canUseFile) {
+    try { handle = await window.showSaveFilePicker({ suggestedName: 'pass-note-vault.json', types: FILE_TYPES }); }
+    catch {
+      if (!confirm('保存ファイルを作らずに始めますか？\n\nこのブラウザの中だけに保存します。ブラウザのデータを消すと消えるので、あとで「保存ファイルを作る」をしてください。')) return;
+    }
+  }
   const salt = newSalt();
-  session = { key: await deriveKey(p1, salt), salt, entries: [] };
+  session = { key: await deriveKey(p1, salt), salt, entries: [], settings: { ...DEFAULT_SETTINGS } };
   $('setup-pw1').value = $('setup-pw2').value = '';
-  await persist();
-  show('app'); render();
+  if (handle) {
+    const blob = await sealVault(session.key, session.salt, vaultData());
+    store.write(blob);
+    try { await useVaultFile(handle, await writeVaultFile(handle, JSON.stringify(blob))); }
+    catch { toast('保存ファイルに書き込めませんでした。このブラウザの中にだけ保存しています。'); }
+  } else await persist();
+  opened();
 };
 $('setup-pw2').onkeydown = e => { if (e.key === 'Enter') $('setup-ok').click(); };
 $('setup-restore').onclick = () => startImport();
 
 // 開いたあとの共通の処理
 function opened() {
+  backedUpSinceChange = false;
   $('lock-pw').value = '';
   $('lock-error').textContent = '';
   $('lock-fallback').classList.add('hidden');
@@ -698,6 +767,8 @@ function emptyMessage() {
 function render() {
   if (!session) return;
   renderFilter();
+  renderNotice();
+  $('foot-note').textContent = `コピーしたパスワードは 30 秒後にクリップボードから消します（この画面を開いているとき）。${session.settings.lockMinutes} 分間操作がないと自動でロックします。`;
   const q = view.query();
   const items = session.entries.filter(x => view.inImportance(x) && view.inType(x) && view.matches(x, q)).sort(byOrder);
   $('cat-list').replaceChildren(...[...new Set(session.entries.map(x => x.category).filter(Boolean))].map(c => el('option', { value: c })));
@@ -928,12 +999,24 @@ function askPassword({ title, note, label = 'パスワード', twice = false }) 
 }
 
 // ---- バックアップ・復元・マスターパスワードの変更 ----
-$('btn-menu').onclick = () => $('menu').showModal();
+$('btn-menu').onclick = () => { $('m-lock-min').value = session.settings.lockMinutes; $('menu').showModal(); };
+$('m-lock-min').onchange = async () => {
+  const v = Math.round(Number($('m-lock-min').value));
+  const m = Number.isFinite(v) ? Math.min(60, Math.max(1, v)) : session.settings.lockMinutes;   // 1〜60 分に収める
+  $('m-lock-min').value = m;
+  if (m === session.settings.lockMinutes) return;
+  session.settings = { ...session.settings, lockMinutes: m };
+  const note = await persist();
+  render();
+  toastSaved(`自動ロックを ${m} 分にしました`, note);
+};
 $('m-close').onclick = () => $('menu').close();
 
 $('m-export').onclick = async () => {
-  const blob = await sealVault(session.key, session.salt, session.entries);
+  const blob = await sealVault(session.key, session.salt, vaultData());
   download(JSON.stringify(blob), `pass-note-backup-${today()}.json`);
+  backedUpSinceChange = true;
+  renderNotice();
   toast('バックアップを保存しました');
 };
 
@@ -959,7 +1042,7 @@ $('m-file-new').onclick = async () => {
   let handle;
   try { handle = await window.showSaveFilePicker({ suggestedName: 'pass-note-vault.json', types: FILE_TYPES }); } catch { return; }
   try {
-    const lm = await writeVaultFile(handle, JSON.stringify(await sealVault(session.key, session.salt, session.entries)));
+    const lm = await writeVaultFile(handle, JSON.stringify(await sealVault(session.key, session.salt, vaultData())));
     await useVaultFile(handle, lm);
     toast(`保存先を「${handle.name}」にしました。これからは、変更のたびにこのファイルに保存します`);
   } catch { toast('ファイルに書き込めませんでした'); }
@@ -990,7 +1073,7 @@ $('m-change').onclick = async () => {
 // ---- 自動ロック ----
 let lastActivity = Date.now();
 for (const ev of ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll']) addEventListener(ev, () => lastActivity = Date.now(), { passive: true });
-setInterval(() => { if (session && Date.now() - lastActivity > IDLE_LOCK_MS) { lock(); toast('自動でロックしました'); } }, 15000);
+setInterval(() => { if (session && Date.now() - lastActivity > session.settings.lockMinutes * 60000) { lock(); toast('自動でロックしました'); } }, 5000);
 
 // ---- 始める ----
 if (!window.crypto || !crypto.subtle) {
@@ -1002,6 +1085,7 @@ if (!window.crypto || !crypto.subtle) {
   for (const e of document.querySelectorAll('.types .ti')) setIcon(e, e.dataset.type);
   for (const e of document.querySelectorAll('.file-only')) e.classList.toggle('hidden', !canUseFile);
   for (const e of document.querySelectorAll('.no-file')) e.classList.toggle('hidden', canUseFile);
+  if (canUseFile) $('setup-ok').textContent = 'はじめる（保存ファイルを作る）';
   (async () => {
     if (canUseFile) vaultFile.handle = await handleDb.get();
     renderSaveInfo();

@@ -18,7 +18,7 @@
     const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
     return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   }
-  async function decryptBlob(blob, pw) {
+  async function decryptBlob(blob, pw) {   // 中身（{ entries, settings }）を返す
     const key = await keyFor(pw, fromB64(blob.salt), blob.iter);
     const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(blob.iv) }, key, fromB64(blob.ct));
     return JSON.parse(new TextDecoder().decode(plain));
@@ -52,7 +52,9 @@
     frame.src = '../passnote.html?t=' + Date.now();
     await new Promise(f => frame.onload = f);
     W = frame.contentWindow; D = W.document;
-    W.confirm = () => true;   // 削除・復元の確認は「はい」
+    W.confirm = () => true;   // 削除・復元・「保存ファイルを作らずに始める」の確認は「はい」
+    // ファイルを選ぶ画面は、ふだんは「キャンセルされた」ことにする（試験の中で、必要なときだけ差し替える）
+    W.showSaveFilePicker = W.showOpenFilePicker = async () => { throw new W.DOMException('キャンセル', 'AbortError'); };
     await wait(100);
     await until(() => D.getElementById('setup') && screen());   // 保存ファイルを思い出してから画面を出すので、それを待つ
   }
@@ -371,6 +373,65 @@
     await load();
     out.file.afterReset = { screen: screen(), fileStillThere: (await fileEntries(fh2, PW)).length };
     try { await opfs.removeEntry('regress-vault-2.json'); } catch {}
+
+    // 15. 最初から保存ファイル（1.3.0）
+    const notice = () => $('notice').classList.contains('hidden') ? null
+      : { text: $('notice-text').textContent, buttons: [...$('notice').querySelectorAll('button')].map(b => b.textContent) };
+    const noticeButton = label => [...$('notice').querySelectorAll('button')].find(b => b.textContent === label);
+    out.start = {};
+
+    // 15-1. 「はじめる」で保存ファイルを作る → 最初からファイルに保存される。お知らせは出ない
+    W.localStorage.removeItem(STORE_KEY); await clearHandles();
+    await load();
+    out.start.setupButton = $('setup-ok').textContent;
+    const fh3 = await opfsFile('regress-vault-3.json');
+    W.showSaveFilePicker = async () => fh3;
+    $('setup-pw1').value = PW; $('setup-pw2').value = PW; $('setup-ok').click();
+    await until(() => screen() === 'app');
+    const inFile3 = await decryptBlob(JSON.parse(await (await fh3.getFile()).text()), PW);
+    out.start.withFile = { saveInfo: saveInfo(), notice: notice(), fileEntries: inFile3.entries.length, fileSettings: inFile3.settings, foot: $('foot-note').textContent };
+
+    // 15-2. ほかで変更されていて上書きしなかった → お知らせ。「今の内容でファイルに保存する」で消える
+    await writeExternal(fh3, ['ほかのPCで足したもの'], PW);
+    W.confirm = () => false;
+    await add('http', { 'f-name': 'ダミーのE', 'f-pass': 'dummy-pass-E' });
+    W.confirm = () => true;
+    out.start.unsaved = notice();
+    noticeButton('今の内容でファイルに保存する').click();
+    await until(() => !notice());
+    out.start.savedNow = { notice: notice(), saveInfo: saveInfo(), toast: toast(), inFile: await fileEntries(fh3, PW) };
+
+    // 15-3. 自動ロックの時間：1〜60 分に収める。中身（保存ファイル）に入り、開き直しても残る
+    $('btn-menu').click();
+    out.start.lockDefault = $('m-lock-min').value;
+    const setLock = async v => { $('m-lock-min').value = v; fire($('m-lock-min'), 'change'); await wait(300); return { value: $('m-lock-min').value, foot: $('foot-note').textContent }; };
+    out.start.lock1 = await setLock('1');
+    out.start.lock0 = await setLock('0');
+    out.start.lock100 = await setLock('100');
+    out.start.lock15 = await setLock('15');
+    $('menu').close();
+    out.start.lockInFile = (await decryptBlob(JSON.parse(await (await fh3.getFile()).text()), PW)).settings;
+    $('btn-lock').click(); $('lock-pw').value = PW; $('lock-ok').click();
+    await until(() => screen() === 'app');
+    out.start.lockAfterReopen = $('foot-note').textContent;
+
+    // 15-4. 保存ファイルを作るのをやめて始める → このブラウザの中だけ。お知らせが出て、ファイルを作ると消える
+    W.localStorage.removeItem(STORE_KEY); await clearHandles();
+    await load();
+    W.confirm = () => false;   // 「保存ファイルを作らずに始めますか？」に「いいえ」→ 始めない
+    $('setup-pw1').value = PW; $('setup-pw2').value = PW; $('setup-ok').click();
+    await wait(300);
+    out.start.cancelNo = screen();
+    W.confirm = () => true;    // 「はい」→ このブラウザの中だけで始める
+    $('setup-ok').click();
+    await until(() => screen() === 'app');
+    out.start.localOnly = { notice: notice(), saveInfo: saveInfo() };
+    const fh4 = await opfsFile('regress-vault-4.json');
+    W.showSaveFilePicker = async () => fh4;
+    noticeButton('保存ファイルを作る').click();
+    await until(() => !notice());
+    out.start.afterCreate = { notice: notice(), saveInfo: saveInfo() };
+    for (const n of ['regress-vault-3.json', 'regress-vault-4.json']) { try { await opfs.removeEntry(n); } catch {} }
   } catch (e) {
     out.error = String(e && e.stack || e);
   } finally {
