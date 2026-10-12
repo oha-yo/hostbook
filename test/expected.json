@@ -631,5 +631,113 @@
     "storageAfter": null,
     "screen": "setup",
     "toast": "初期化しました。新しいマスターパスワードを決めてください。"
+  },
+  "file": {
+    "before": {
+      "saveInfo": {
+        "text": "保存先：このブラウザの中",
+        "warn": false
+      },
+      "status": "今は、このブラウザの中（localStorage）にだけ保存しています。ブラウザのデータを消すと消えるので、ファイルに保存するのがおすすめです。",
+      "offDisabled": true
+    },
+    "linked": {
+      "toast": "保存先を「regress-vault.json」にしました。これからは、変更のたびにこのファイルに保存します",
+      "saveInfo": {
+        "text": "保存先：ファイル「regress-vault.json」",
+        "warn": false
+      },
+      "status": "ファイル「regress-vault.json」に保存しています（変更のたびに自動で上書き）。このブラウザの中にも写しを残しています。",
+      "inFile": [
+        "ダミーのA"
+      ]
+    },
+    "afterAdd": [
+      "ダミーのA",
+      "ダミーのB"
+    ],
+    "lockText": "保存ファイル「regress-vault.json」を開きます。",
+    "reopened": {
+      "names": [
+        "ダミーのA",
+        "ダミーのB"
+      ],
+      "localSynced": true
+    },
+    "conflictCancel": {
+      "toast": "保存しました。ただし、保存ファイルには上書きしませんでした（このブラウザの中にだけ保存しています）",
+      "saveInfo": {
+        "text": "保存先：ファイル「regress-vault.json」に書き込めていません（このブラウザの中にだけ保存しています。ロックして開き直してください）",
+        "warn": true
+      },
+      "inFile": [
+        "ほかのPCで足したもの"
+      ]
+    },
+    "afterCancelReopen": [
+      "ほかのPCで足したもの"
+    ],
+    "conflictOverwrite": {
+      "saveInfo": {
+        "text": "保存先：ファイル「regress-vault.json」",
+        "warn": false
+      },
+      "inFile": [
+        "ほかのPCで足したもの",
+        "ダミーのD"
+      ]
+    },
+    "missing": {
+      "error": "保存ファイル「regress-vault.json」が見つかりません（移動したか、消したようです）。下のどちらかを選んでください。",
+      "localEnabled": true
+    },
+    "openedLocal": {
+      "names": [
+        "ダミーのD",
+        "ほかのPCで足したもの"
+      ],
+      "saveInfo": {
+        "text": "保存先：ファイル「regress-vault.json」に書き込めていません（このブラウザの中にだけ保存しています。ロックして開き直してください）",
+        "warn": true
+      }
+    },
+    "repicked": {
+      "names": [
+        "ダミーのD",
+        "ほかのPCで足したもの"
+      ],
+      "saveInfo": {
+        "text": "保存先：ファイル「regress-vault-2.json」",
+        "warn": false
+      }
+    },
+    "freshScreen": {
+      "screen": "setup",
+      "fileButton": true
+    },
+    "freshOpened": {
+      "names": [
+        "ダミーのD",
+        "ほかのPCで足したもの"
+      ],
+      "saveInfo": {
+        "text": "保存先：ファイル「regress-vault-2.json」",
+        "warn": false
+      },
+      "toast": "「regress-vault-2.json」を開きました。これからは、変更のたびにこのファイルに保存します"
+    },
+    "off": {
+      "toast": "ファイルへの保存をやめました",
+      "saveInfo": {
+        "text": "保存先：このブラウザの中",
+        "warn": false
+      },
+      "offDisabled": true,
+      "fileStillThere": 2
+    },
+    "afterReset": {
+      "screen": "setup",
+      "fileStillThere": 2
+    }
   }
 }

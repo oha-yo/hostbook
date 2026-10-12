@@ -22,9 +22,12 @@
 ### 回帰テスト
 直したら、ほかの動きが変わっていないかを `test/regress.html` で確かめる。
 1. passnote のフォルダで `python -m http.server 8765 --bind 127.0.0.1` を動かし、`http://localhost:8765/test/regress.html` を開く。
-2. iframe の中で passnote を自動で操作し、結果を `test/expected.json` と比べる（暗号化の計算があるので数十秒かかる）。「OK：36 項目すべて同じです」なら変わっていない。
+2. iframe の中で passnote を自動で操作し、結果を `test/expected.json` と比べる（暗号化の計算があるので数十秒かかる）。「OK：37 項目すべて同じです」なら変わっていない。
 3. 試験は画面の部品の id（`btn-add`、`edit-form`、`search`、`type-filter` など）を使って操作する。id を変えるときは `test/regress.js` も直す。
 4. 動きを**意図して**変えたときは、`regress.html?update` を開いて、出てきた JSON を `test/expected.json` に保存し直す。
+- 保存ファイル（File System Access API）の試験は、ファイルを選ぶダイアログを `showSaveFilePicker`・`showOpenFilePicker` の差し替えで飛ばし、OPFS のファイルを「選ばれたファイル」として渡して行う。
+- 結果を保存し直すときは、`test/` の下の `.json` を PUT で書けるサーバーを使う（ふつうの `http.server` は PUT を受け付けない）。ほかのサーバーが 8765 番を使っていることがあるので、そのときは別のポートで動かす。
+- `test/fs-probe.html`（ファイルの読み書き）と `test/prf-probe.html`（顔認証のパスキーの PRF。localhost で開く）は、ブラウザの機能を確かめるための試作のページ。中身はダミーだけ。
 - `test/fixture-vault.json` は、パスワード帳のころの形のデータ（テスト用のマスターパスワード `fixture-master-789` で暗号化。中身はダミー）。保存の形式を守れているかを確かめるためのもので、作り直さない。
 
 ## 改修したら

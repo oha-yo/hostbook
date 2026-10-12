@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>顔認証（パスキーの PRF）の確認</title>
+<style>
+body{margin:0;padding:20px;background:#f6f7f9;color:#222;font-family:"Yu Gothic UI","Meiryo",sans-serif;line-height:1.7;max-width:860px}
+h1{font-size:18px;margin:0 0 8px}
+h2{font-size:15px;margin:22px 0 6px}
+button{font:inherit;padding:6px 14px;margin:4px 8px 4px 0;border:1px solid #c8cdd3;border-radius:6px;background:#fff;cursor:pointer}
+button:hover{border-color:#0969da}
+pre{background:#fff;border:1px solid #d8dce2;border-radius:6px;padding:10px;font-size:13px;white-space:pre-wrap;min-height:3em}
+.ok{color:#1a7f37;font-weight:bold}.ng{color:#cf222e;font-weight:bold}
+ol{padding-left:1.4em}
+code{background:#eef1f4;padding:0 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>顔認証（パスキーの PRF）の確認（passnote の試作）</h1>
+<p>passnote を「顔認証で開く」ために必要な、パスキーの <strong>PRF</strong>（顔認証を通ったときだけ、毎回同じ秘密の値を取り出す機能）が、この PC と iPhone で使えるかを確かめるページです。<br>
+中身はダミーだけで、passnote のデータには触れません。<strong>localhost（ローカルのサーバー）で開いてください。</strong></p>
+
+<h2>1. このブラウザで使えるか</h2>
+<pre id="env">調べています…</pre>
+
+<h2>2. 試す</h2>
+<ol>
+  <li>「A. この PC（Windows Hello）で登録」を押す → Windows Hello の顔認証（または指紋・PIN）</li>
+  <li>「C. PRF の値を取り出す」を押す → もう一度顔認証。<strong>2 回押して、同じ値が出るか</strong>を見る</li>
+  <li>「B. iPhone（QR コード）で登録」を押す → 出てきた QR コードを iPhone のカメラで読む →「パスキーを保存」→ 顔認証</li>
+  <li>もう一度「C」を押す（どの鍵で取り出すかを聞かれたら、iPhone を選んで QR コードを読む）</li>
+</ol>
+<button id="regPlatform">A. この PC（Windows Hello）で登録</button>
+<button id="regPhone">B. iPhone（QR コード）で登録</button>
+<button id="getPrf">C. PRF の値を取り出す</button>
+<button id="clear">登録した鍵を忘れる</button>
+<p style="font-size:13px;color:#666">試し終わったら、作ったパスキーを消してください。Windows：設定 → アカウント → パスキー。iPhone：「パスワード」アプリ →「パスキー」→ <code>localhost</code>（名前は「PRF 試験（消してよい）」）。</p>
+
+<h2>3. 結果</h2>
+<pre id="log"></pre>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const log = (msg, cls) => { const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`; $('log').prepend(d); };
+const rand = n => crypto.getRandomValues(new Uint8Array(n));
+const toB64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromB64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+// PRF に渡す「塩」。passnote では、保存ファイルごとに決める値になる
+const SALT = new TextEncoder().encode('passnote-prf-probe-salt-v1');
+const KEY_STORE = 'prf-probe-credentials';   // 試験用：登録した鍵の番号だけを覚えておく（秘密ではない）
+
+// ---- 1. 使える機能 ----
+(async () => {
+  const lines = [
+    `開き方：${location.origin}`,
+    `安全な場所として扱われているか（isSecureContext）：${window.isSecureContext}`,
+    `パスキーの機能（PublicKeyCredential）：${'PublicKeyCredential' in window ? 'あり' : 'なし'}`,
+  ];
+  if ('PublicKeyCredential' in window) {
+    try { lines.push(`この PC の顔認証・指紋・PIN（Windows Hello）が使えるか：${await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable() ? '使える' : '使えない'}`); } catch (e) { lines.push(`Windows Hello の確認：できなかった（${e.message}）`); }
+    if (typeof PublicKeyCredential.getClientCapabilities === 'function') {
+      try {
+        const c = await PublicKeyCredential.getClientCapabilities();
+        lines.push(`ブラウザが答えた対応状況：PRF＝${c['extension:prf'] ?? '不明'}、別の端末（QR コード）＝${c.hybridTransport ?? '不明'}`);
+      } catch (e) { lines.push(`対応状況の問い合わせ：できなかった（${e.message}）`); }
+    } else lines.push('対応状況の問い合わせ（getClientCapabilities）：このブラウザにはない');
+  }
+  lines.push(`ブラウザ：${navigator.userAgent}`);
+  $('env').textContent = lines.join('\n');
+})();
+
+// ---- 登録した鍵の番号（試験用） ----
+const loadCreds = () => { try { return JSON.parse(localStorage.getItem(KEY_STORE)) || []; } catch { return []; } };
+const saveCreds = list => localStorage.setItem(KEY_STORE, JSON.stringify(list));
+
+// ---- 2. 登録（パスキーを作る） ----
+async function register(kind) {
+  const label = kind === 'platform' ? 'この PC（Windows Hello）' : 'iPhone（QR コード）';
+  try {
+    const cred = await navigator.credentials.create({ publicKey: {
+      rp: { name: 'PRF 試験', id: location.hostname },
+      user: { id: rand(16), name: 'prf-probe', displayName: 'PRF 試験（消してよい）' },
+      challenge: rand(32),   // サーバーがないので、確かめる相手はいない（試験用の乱数）
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: kind === 'platform' ? 'platform' : 'cross-platform', residentKey: 'required', userVerification: 'required' },
+      hints: kind === 'platform' ? ['client-device'] : ['hybrid'],
+      extensions: { prf: { eval: { first: SALT } } },
+      timeout: 120000,
+    } });
+    const prf = cred.getClientExtensionResults().prf || {};
+    const list = loadCreds().filter(c => c.id !== cred.id);
+    list.push({ id: cred.id, label });
+    saveCreds(list);
+    log(`${label}：パスキーを作りました。PRF に対応しているか（enabled）：${prf.enabled === undefined ? '答えなし' : prf.enabled}` +
+      (prf.results?.first ? `。登録のときに値も出ました：${hex(prf.results.first).slice(0, 16)}…` : ''), prf.enabled ? 'ok' : (prf.enabled === false ? 'ng' : ''));
+  } catch (e) { log(`${label}：登録できませんでした：${e.name} ${e.message}`, 'ng'); }
+}
+$('regPlatform').onclick = () => register('platform');
+$('regPhone').onclick = () => register('phone');
+
+// ---- 3. PRF の値を取り出す ----
+let lastValues = {};
+$('getPrf').onclick = async () => {
+  const list = loadCreds();
+  if (!list.length) return log('先に A か B で登録してください', 'ng');
+  try {
+    const cred = await navigator.credentials.get({ publicKey: {
+      challenge: rand(32),
+      rpId: location.hostname,
+      allowCredentials: list.map(c => ({ type: 'public-key', id: fromB64u(c.id) })),
+      userVerification: 'required',
+      extensions: { prf: { eval: { first: SALT } } },
+      timeout: 120000,
+    } });
+    const label = (list.find(c => c.id === cred.id) || {}).label || '（わからない鍵）';
+    const out = cred.getClientExtensionResults().prf?.results?.first;
+    if (!out) return log(`${label}：認証はできましたが、PRF の値は返ってきませんでした（この組み合わせでは、顔認証で開くことはできない）`, 'ng');
+    const v = hex(out);
+    const same = lastValues[cred.id] ? (lastValues[cred.id] === v ? '前回と同じ値です（使える）' : '前回と違う値です（おかしい）') : '1 回目です。もう一度押して、同じ値が出るか確かめてください';
+    lastValues[cred.id] = v;
+    // 取り出した値で鍵を作り、ダミーの文字を暗号化して戻せるかを確かめる（passnote ではこの鍵でデータの鍵を包む）
+    const key = await crypto.subtle.importKey('raw', await crypto.subtle.digest('SHA-256', out), 'AES-GCM', false, ['encrypt', 'decrypt']);
+    const iv = rand(12);
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode('ダミーの中身'));
+    const back = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct));
+    log(`${label}：PRF の値が返ってきました（先頭だけ表示：${v.slice(0, 16)}…）。${same}。その値で暗号化して戻せたか：${back === 'ダミーの中身' ? 'できた' : 'できない'}`, 'ok');
+  } catch (e) { log(`取り出せませんでした：${e.name} ${e.message}`, 'ng'); }
+};
+$('clear').onclick = () => { localStorage.removeItem(KEY_STORE); lastValues = {}; log('登録した鍵の番号を忘れました（パスキー自体は、Windows・iPhone の設定から消してください）'); };
+</script>
+</body>
+</html>

@@ -108,6 +108,10 @@
   .center .version { display: block; text-align: right; margin-top: 12px; }
   .foot { display: flex; gap: 12px; align-items: baseline; margin-top: 16px; }
   .foot .note { flex: 1; margin: 0; }
+  .save-info { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .save-info.warn { color: var(--danger); font-weight: 600; white-space: normal; }
+  .menu-sec { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .menu-sec h3 { margin: 0 0 4px; font-size: 15px; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -127,6 +131,8 @@
     <button id="setup-restore">バックアップから復元</button>
     <button class="primary" id="setup-ok">はじめる</button>
   </div>
+  <p class="note file-only" style="margin-top:16px">前に保存ファイルを作っていれば、そのファイルを選ぶだけで続きから使えます（別の PC・ブラウザでも）。</p>
+  <div class="actions file-only" style="margin-top:4px"><button id="setup-file">保存ファイルを開く</button></div>
   <span class="version"></span>
 </section>
 
@@ -134,10 +140,15 @@
 <section id="lock" class="center hidden">
   <h1 class="app-name">接続情報</h1>
   <p class="note">マスターパスワードを入れてください。</p>
+  <p class="note" id="lock-file"></p>
   <label for="lock-pw">マスターパスワード</label>
   <input id="lock-pw" type="password" autocomplete="current-password">
   <div class="error" id="lock-error"></div>
   <div class="actions"><button class="primary" id="lock-ok">開く</button></div>
+  <div class="actions hidden" id="lock-fallback">
+    <button id="lock-repick">保存ファイルを選び直す</button>
+    <button id="lock-local">このブラウザの中の写しで開く</button>
+  </div>
   <p style="margin:16px 0 0; text-align:right"><button type="button" class="link" id="lock-forgot">マスターパスワードを忘れた場合</button></p>
   <span class="version"></span>
 </section>
@@ -155,6 +166,7 @@
   <div id="list" class="list"></div>
   <div class="foot">
     <p class="note">コピーしたパスワードは 30 秒後にクリップボードから消します（この画面を開いているとき）。5 分間操作がないと自動でロックします。</p>
+    <span class="save-info" id="save-info"></span>
     <span class="version"></span>
   </div>
 </main>
@@ -220,6 +232,16 @@
     <button id="m-import">バックアップから復元（今の中身と置き換え）</button>
     <button id="m-change">マスターパスワードを変更</button>
   </div>
+  <div class="menu-sec">
+    <h3>保存先</h3>
+    <p class="note" id="m-file-status"></p>
+    <div class="file-only" style="display:grid; gap:8px; margin-top:8px">
+      <button id="m-file-new">新しいファイルに保存する</button>
+      <button id="m-file-open">今あるファイルを開いて使う（今の中身と置き換え）</button>
+      <button id="m-file-off">ファイルへの保存をやめる</button>
+    </div>
+    <p class="note no-file hidden">このブラウザでは、ファイルへの保存は使えません（Chrome・Edge で使えます）。このブラウザの中にだけ保存します。</p>
+  </div>
   <div class="actions"><span class="version" style="margin-right:auto"></span><button id="m-close">閉じる</button></div>
 </dialog>
 
@@ -249,6 +271,7 @@
     <p class="note">中身はマスターパスワードで暗号化しているので、パスワードがわからないと<strong>取り出す方法はありません</strong>（作った本人でも、です）。</p>
     <p class="note">初期化すると、このブラウザに保存している<span class="app-name">接続情報</span>を消して、新しいマスターパスワードで始め直せます。</p>
     <p class="note">消す前に、今の中身を<strong>暗号化したまま</strong>ファイルに保存します（ダウンロードのフォルダに <code>pass-note-backup-before-reset-日付.json</code>）。あとでマスターパスワードを思い出したら、「バックアップから復元」で元に戻せます。</p>
+    <p class="note">保存ファイルを使っている場合、<strong>そのファイルは消しません</strong>（つながりを外すだけです）。</p>
     <label for="reset-confirm">確認のため「初期化する」と入力してください</label>
     <input id="reset-confirm" autocomplete="off">
     <div class="actions">
@@ -267,7 +290,7 @@
 // 暗号化したものだけを localStorage に保存する。平文は画面を開いている間のメモリにしか置かない。
 // https://github.com/oha-yo/passnote
 const APP_NAME = '接続情報';             // 画面に出す名前（仮称）。変えるときはここだけ直す
-const VERSION = '1.1.0';                 // 変えたら CHANGELOG.md もそろえる
+const VERSION = '1.2.0';                 // 変えたら CHANGELOG.md もそろえる
 const STORE_KEY = 'pass-note-vault-v1';   // 保存のキーは、すでにデータが入っているので変えない
 const ITERATIONS = 600000;
 const CLIPBOARD_CLEAR_MS = 30000;
@@ -363,12 +386,111 @@ const store = {
   clear() { localStorage.removeItem(STORE_KEY); },
 };
 
+// ---- 保存ファイル（File System Access API。Chrome・Edge だけ） ----
+// データの正本を、利用者が選んだファイルにする。中身はバックアップと同じ形式（暗号化したもの）。
+// ブラウザが覚えるのは「どのファイルか」（ハンドル）だけで、IndexedDB に入れる。ブラウザのデータが消えても、ファイルは消えない。
+// localStorage にも写しを書き続ける（ファイルが見つからないときの予備）
+const canUseFile = typeof window.showSaveFilePicker === 'function';
+const FILE_TYPES = [{ description: '接続情報の保存ファイル', accept: { 'application/json': ['.json'] } }];
+const vaultFile = {
+  handle: null,        // 保存ファイルのハンドル
+  lastModified: 0,     // 最後に読んだ・書いたときのファイルの更新日時（ほかで変更されたかを見るため）
+  unavailable: false,  // 開いている間、ファイルに書かない状態（写しで開いた・上書きしないと決めた・書けなかった）
+};
+const handleDb = {
+  open() {
+    return new Promise((ok, ng) => {
+      const r = indexedDB.open('pass-note', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('handles');
+      r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error);
+    });
+  },
+  async get() {
+    try {
+      const db = await this.open();
+      return await new Promise(ok => { const r = db.transaction('handles').objectStore('handles').get('vault'); r.onsuccess = () => ok(r.result || null); r.onerror = () => ok(null); });
+    } catch { return null; }
+  },
+  async set(handle) {   // null で忘れる
+    const db = await this.open();
+    await new Promise((ok, ng) => {
+      const t = db.transaction('handles', 'readwrite');
+      if (handle) t.objectStore('handles').put(handle, 'vault'); else t.objectStore('handles').delete('vault');
+      t.oncomplete = ok; t.onerror = () => ng(t.error);
+    });
+  },
+};
+// 許可を確かめる。ask のときは、なければ頼む（頼めるのは、ボタンを押した直後だけ）
+async function filePermission(handle, ask) {
+  const opt = { mode: 'readwrite' };
+  if (await handle.queryPermission(opt) === 'granted') return true;
+  return ask && await handle.requestPermission(opt) === 'granted';
+}
+async function readVaultFile(handle) {
+  const f = await handle.getFile();
+  let blob;
+  try { blob = JSON.parse(await f.text()); } catch { throw new Error('保存ファイルの中身が読めません（接続情報の保存ファイルではないようです）。'); }
+  return { blob, lastModified: f.lastModified };
+}
+async function writeVaultFile(handle, text) {
+  const w = await handle.createWritable();
+  await w.write(text);
+  await w.close();
+  return (await handle.getFile()).lastModified;
+}
+// 保存ファイルを決める（覚える）・やめる
+async function useVaultFile(handle, lastModified) {
+  vaultFile.handle = handle; vaultFile.lastModified = lastModified; vaultFile.unavailable = false;
+  await handleDb.set(handle);
+  renderSaveInfo();
+}
+async function forgetVaultFile() {
+  vaultFile.handle = null; vaultFile.lastModified = 0; vaultFile.unavailable = false;
+  await handleDb.set(null);
+  renderSaveInfo();
+}
+// 保存先の表示（一覧の下・「その他」）
+function renderSaveInfo() {
+  const info = $('save-info'), status = $('m-file-status');
+  const name = vaultFile.handle && vaultFile.handle.name;
+  info.classList.toggle('warn', !!(name && vaultFile.unavailable));
+  info.textContent = !name ? '保存先：このブラウザの中' : vaultFile.unavailable
+    ? `保存先：ファイル「${name}」に書き込めていません（このブラウザの中にだけ保存しています。ロックして開き直してください）`
+    : `保存先：ファイル「${name}」`;
+  status.textContent = !name ? '今は、このブラウザの中（localStorage）にだけ保存しています。ブラウザのデータを消すと消えるので、ファイルに保存するのがおすすめです。'
+    : `ファイル「${name}」に保存しています（変更のたびに自動で上書き）。このブラウザの中にも写しを残しています。`;
+  $('m-file-off').disabled = !name;
+}
+
 let session = null;      // 開いている間だけ持つ { key, salt, entries }
+// 保存する。保存ファイルに書けなかったときは、その理由を返す（書けたとき・ファイルを使っていないときは ''）
 async function persist() {
   const blob = await sealVault(session.key, session.salt, session.entries);
   try { store.write(blob); }
   catch { toast('保存できませんでした。バックアップを保存してください。'); }
+  return vaultFile.handle && !vaultFile.unavailable ? saveToFile(JSON.stringify(blob)) : '';
 }
+// 保存したことを知らせる。保存ファイルに書けなかったときは、そのことも添える
+const toastSaved = (msg, note) => toast(note ? `${msg}。ただし、${note}` : msg);
+// 保存ファイルに書く。ほかで変更されていたら（別の PC で変更した、など）、上書きしてよいかを聞く
+async function saveToFile(text) {
+  const h = vaultFile.handle;
+  try {
+    if (!(await filePermission(h, false))) throw new Error('許可がない');
+    const now = (await h.getFile()).lastModified;
+    if (vaultFile.lastModified && now !== vaultFile.lastModified && !confirm(
+      `保存ファイル「${h.name}」が、ほかで変更されています（別の PC で変更した、など）。\nこちらの内容で上書きしますか？\n\n「キャンセル」を押すと上書きしません。この変更はこのブラウザの中にだけ残り、ロックして開き直すと、ファイルの内容を読み込みます。`)) {
+      vaultFile.unavailable = true;
+      return finish('保存ファイルには上書きしませんでした（このブラウザの中にだけ保存しています）');
+    }
+    vaultFile.lastModified = await writeVaultFile(h, text);
+    return finish('');
+  } catch {
+    vaultFile.unavailable = true;
+    return finish('保存ファイルに書き込めませんでした（このブラウザの中にだけ保存しています）');
+  }
+}
+function finish(note) { renderSaveInfo(); return note; }
 
 // ---- 接続の種類 ----
 // 種類ごとの名前・ポートの初期値・使う入力欄。以前のデータには type がないので、http として扱う（保存の形式は変えない）
@@ -425,7 +547,10 @@ function lock() {
   for (const d of document.querySelectorAll('dialog[open]')) d.close();
   $('lock-pw').value = '';
   $('lock-error').textContent = '';
-  show(store.read() ? 'lock' : 'setup');
+  $('lock-fallback').classList.add('hidden');
+  vaultFile.unavailable = false;
+  $('lock-file').textContent = vaultFile.handle ? `保存ファイル「${vaultFile.handle.name}」を開きます。` : '';
+  show(store.read() || vaultFile.handle ? 'lock' : 'setup');
 }
 
 // ---- 初回・ロック解除 ----
@@ -442,15 +567,77 @@ $('setup-ok').onclick = async () => {
 $('setup-pw2').onkeydown = e => { if (e.key === 'Enter') $('setup-ok').click(); };
 $('setup-restore').onclick = () => startImport();
 
+// 開いたあとの共通の処理
+function opened() {
+  $('lock-pw').value = '';
+  $('lock-error').textContent = '';
+  $('lock-fallback').classList.add('hidden');
+  renderSaveInfo();
+  show('app'); render();
+}
 $('lock-ok').onclick = async () => {
+  $('lock-error').textContent = '確認しています…';
+  let blob = store.read();
+  if (vaultFile.handle) {
+    // 保存ファイルが正本。許可は、ボタンを押した直後に頼む（ブラウザは、利用者の操作の直後でないと許可の確認を出さない）
+    try {
+      if (!(await filePermission(vaultFile.handle, true))) throw new Error('保存ファイルを使う許可がありません。もう一度「開く」を押して、許可してください。');
+      const f = await readVaultFile(vaultFile.handle);
+      blob = f.blob; vaultFile.lastModified = f.lastModified;
+    } catch (e) {
+      $('lock-error').textContent = e.name === 'NotFoundError'
+        ? `保存ファイル「${vaultFile.handle.name}」が見つかりません（移動したか、消したようです）。下のどちらかを選んでください。`
+        : e.message;
+      $('lock-fallback').classList.remove('hidden');
+      $('lock-local').disabled = !store.read();
+      return;
+    }
+  }
+  try {
+    session = await openVault(blob, $('lock-pw').value);
+    if (vaultFile.handle) store.write(blob);   // このブラウザの中の写しも、ファイルの内容にそろえる
+    opened();
+  } catch (e) { $('lock-error').textContent = e.message; }
+};
+// 保存ファイルが見つからないとき：選び直す（入れたマスターパスワードで開く）
+$('lock-repick').onclick = async () => {
+  let handle;
+  try { [handle] = await window.showOpenFilePicker({ types: FILE_TYPES }); } catch { return; }
+  await useVaultFile(handle, 0);
+  $('lock-file').textContent = `保存ファイル「${handle.name}」を開きます。`;
+  $('lock-ok').click();
+};
+// 保存ファイルが見つからないとき：このブラウザの中の写しで開く（開いている間は、ファイルには書かない）
+$('lock-local').onclick = async () => {
   $('lock-error').textContent = '確認しています…';
   try {
     session = await openVault(store.read(), $('lock-pw').value);
-    $('lock-pw').value = '';
-    $('lock-error').textContent = '';
-    show('app'); render();
+    vaultFile.unavailable = true;
+    opened();
   } catch (e) { $('lock-error').textContent = e.message; }
 };
+
+// 新しい PC・ブラウザで、前に作った保存ファイルを開いて続きから使う
+$('setup-file').onclick = async () => {
+  let handle;
+  try { [handle] = await window.showOpenFilePicker({ types: FILE_TYPES }); } catch { return; }
+  await openFromFile(handle, '保存ファイルを開く');
+};
+// 保存ファイルを読み、マスターパスワードを聞いて開き、そのファイルを保存先にする
+async function openFromFile(handle, title) {
+  let f;
+  try { f = await readVaultFile(handle); } catch (e) { return toast(e.message); }
+  const pw = await askPassword({ title, note: `「${handle.name}」を作ったときのマスターパスワードを入れてください。`, label: 'マスターパスワード' });
+  if (pw == null) return;
+  let next;
+  try { next = await openVault(f.blob, pw); } catch (e) { return toast(e.message); }
+  if (session && !confirm(`今の中身（${session.entries.length} 件）を、「${handle.name}」の中身（${next.entries.length} 件）で置き換えますか？`)) return;
+  session = next;
+  store.write(f.blob);
+  await useVaultFile(handle, f.lastModified);
+  opened();
+  toast(`「${handle.name}」を開きました。これからは、変更のたびにこのファイルに保存します`);
+}
 $('lock-pw').onkeydown = e => { if (e.key === 'Enter') $('lock-ok').click(); };
 $('btn-lock').onclick = lock;
 
@@ -469,6 +656,7 @@ $('reset-form').onsubmit = e => {
   const raw = store.raw();
   if (raw) download(raw, `pass-note-backup-before-reset-${today()}.json`);
   store.clear();
+  forgetVaultFile();   // 保存ファイルは消さず、つながりだけ外す
   $('reset').close();
   lock();   // 保存したものがないので「はじめる」の画面になる
   toast('初期化しました。新しいマスターパスワードを決めてください。');
@@ -618,8 +806,9 @@ async function moveEntry(movingId, targetId, after) {
   const item = all.splice(all.findIndex(x => x.id === movingId), 1)[0];
   all.splice(all.findIndex(x => x.id === targetId) + (after ? 1 : 0), 0, item);
   all.forEach((x, i) => { x.order = i; });
-  await persist();
+  const note = await persist();
   render();
+  if (note) toast(note);
 }
 
 // ---- クリップボード ----
@@ -705,18 +894,18 @@ $('edit-form').onsubmit = async e => {
     const orders = session.entries.map(x => x.order).filter(Number.isFinite);
     session.entries.push({ id: crypto.randomUUID(), ...data, created: new Date().toISOString(), ...(orders.length ? { order: Math.max(...orders) + 1 } : {}) });
   }
-  await persist();
+  const note = await persist();
   $('edit').close(); render();
   // 保存したものが今の表示から外れるときは、どうすれば見えるかを知らせる
-  toast(view.inImportance(data) ? '保存しました'
+  toastSaved(view.inImportance(data) ? '保存しました'
     : view.importantOnly ? '保存しました（重要ではないので、「重要」を OFF にすると表示されます）'
-    : '保存しました（重要なので、「重要」を ON にすると表示されます）');
+    : '保存しました（重要なので、「重要」を ON にすると表示されます）', note);
 };
 $('edit-delete').onclick = async () => {
   if (!editing || !confirm(`「${editing.name}」を削除しますか？`)) return;
   session.entries = session.entries.filter(x => x !== editing);
-  await persist();
-  $('edit').close(); render(); toast('削除しました');
+  const note = await persist();
+  $('edit').close(); render(); toastSaved('削除しました', note);
 };
 
 // ---- パスワードを聞くダイアログ（復元・変更用） ----
@@ -761,8 +950,32 @@ $('file-input').onchange = async () => {
   try { opened = await openVault(blob, pw); } catch (e) { return toast(e.message); }
   if (session && !confirm(`今の中身（${session.entries.length} 件）を、バックアップの中身（${opened.entries.length} 件）で置き換えますか？`)) return;
   session = opened;   // 以後はバックアップのマスターパスワードで開く
-  await persist();
-  show('app'); render(); toast(`${opened.entries.length} 件を復元しました`);
+  const note = await persist();
+  show('app'); render(); toastSaved(`${opened.entries.length} 件を復元しました`, note);
+};
+
+// 保存先：新しいファイルを作って、今の中身を保存する
+$('m-file-new').onclick = async () => {
+  let handle;
+  try { handle = await window.showSaveFilePicker({ suggestedName: 'pass-note-vault.json', types: FILE_TYPES }); } catch { return; }
+  try {
+    const lm = await writeVaultFile(handle, JSON.stringify(await sealVault(session.key, session.salt, session.entries)));
+    await useVaultFile(handle, lm);
+    toast(`保存先を「${handle.name}」にしました。これからは、変更のたびにこのファイルに保存します`);
+  } catch { toast('ファイルに書き込めませんでした'); }
+};
+// 保存先：今あるファイルを開いて、その中身に切り替える
+$('m-file-open').onclick = async () => {
+  let handle;
+  try { [handle] = await window.showOpenFilePicker({ types: FILE_TYPES }); } catch { return; }
+  $('menu').close();
+  await openFromFile(handle, '保存ファイルを開いて使う');
+};
+// 保存先：ファイルへの保存をやめる（ファイルは消さない）
+$('m-file-off').onclick = async () => {
+  if (!vaultFile.handle || !confirm(`ファイル「${vaultFile.handle.name}」への保存をやめますか？（ファイルは消しません。これからは、このブラウザの中にだけ保存します）`)) return;
+  await forgetVaultFile();
+  toast('ファイルへの保存をやめました');
 };
 
 $('m-change').onclick = async () => {
@@ -771,7 +984,7 @@ $('m-change').onclick = async () => {
   if (pw == null) return;
   const salt = newSalt();
   session = { ...session, key: await deriveKey(pw, salt), salt };
-  await persist(); toast('マスターパスワードを変更しました');
+  toastSaved('マスターパスワードを変更しました', await persist());
 };
 
 // ---- 自動ロック ----
@@ -787,7 +1000,13 @@ if (!window.crypto || !crypto.subtle) {
   document.title = APP_NAME;
   for (const e of document.querySelectorAll('.version')) e.textContent = `${APP_NAME} v${VERSION}`;   // 版の番号（どの画面にも出す）
   for (const e of document.querySelectorAll('.types .ti')) setIcon(e, e.dataset.type);
-  lock();
+  for (const e of document.querySelectorAll('.file-only')) e.classList.toggle('hidden', !canUseFile);
+  for (const e of document.querySelectorAll('.no-file')) e.classList.toggle('hidden', canUseFile);
+  (async () => {
+    if (canUseFile) vaultFile.handle = await handleDb.get();
+    renderSaveInfo();
+    lock();
+  })();
 }
 </script>
 </body>

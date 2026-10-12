@@ -1,5 +1,6 @@
 # バックアップのファイル（暗号化されていても、管理対象に入れない）
 pass-note-backup-*.json
+pass-note-vault*.json
 *.backup.json
 
 # 作業用

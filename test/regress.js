@@ -44,6 +44,9 @@
     return;
   }
 
+  // 保存ファイルの記憶（IndexedDB の pass-note）を消す
+  const clearHandles = () => new Promise(ok => { const r = indexedDB.deleteDatabase('pass-note'); r.onsuccess = r.onerror = r.onblocked = () => ok(); });
+
   // ---- 画面の操作 ----
   async function load() {
     frame.src = '../passnote.html?t=' + Date.now();
@@ -51,6 +54,7 @@
     W = frame.contentWindow; D = W.document;
     W.confirm = () => true;   // 削除・復元の確認は「はい」
     await wait(100);
+    await until(() => D.getElementById('setup') && screen());   // 保存ファイルを思い出してから画面を出すので、それを待つ
   }
   async function until(cond, ms = 15000) {
     const t0 = Date.now();
@@ -116,13 +120,17 @@
   }
 
   const out = {};
+  const step = name => { window.STEP = name; result.textContent = `実行中…（${name}）`; };
   try {
-    // 0. 前のテストのデータを消して開く → 初回の画面
+    step('0');
+    // 0. 前のテストのデータ（保存データ・保存ファイルの記憶）を消して開く → 初回の画面
     localStorage.removeItem(STORE_KEY);
+    await clearHandles();
     await load();
     out.title = D.title;
     out.first = { screen: screen(), h1: text($('setup').querySelector('h1')) };
 
+    step('1');
     // 1. マスターパスワードを決める（短い・食い違い → はじめる）
     $('setup-pw1').value = 'short'; $('setup-pw2').value = 'short'; $('setup-ok').click();
     out.setupShort = $('setup-error').textContent;
@@ -132,6 +140,7 @@
     await until(() => screen() === 'app');
     out.empty = view();
 
+    step('2');
     // 2. 3種類を登録する
     out.add = {};
     out.add.http = await add('http', { 'f-name': 'ダミーの管理画面', 'f-url': 'https://admin.example.com/login', 'f-user': 'admin', 'f-pass': 'dummy-pass-WEB', 'f-cat': 'Web サービス', 'f-memo': '二段階認証あり\n予備コードは金庫' });
@@ -142,6 +151,7 @@
     out.add.nouser = await add('http', { 'f-name': 'ダミーのメモだけ', 'f-pass': 'dummy-pass-ONLY' });
     out.listed = view();
 
+    step('3');
     // 3. 検索・種類の絞り込み・「重要」のスイッチ
     out.search = {};
     for (const q of ['example.local', 'ADMIN', 'orders', '社内', '金庫', '銀行', 'zzz']) { await search(q); out.search[q] = view(); }
@@ -159,6 +169,7 @@
     out.add.whileType = await add('db', { 'f-name': 'ダミーの分析DB', 'f-host': 'dwh.example.local', 'f-db': 'dwh', 'f-user': 'analyst', 'f-pass': 'dummy-pass-DWH', 'f-level': 'high' });
     filterBtn('すべて').click();
 
+    step('4');
     // 4. パスワードの表示（10 秒で隠れるが、ここではすぐ確かめる）
     const bankless = [...D.querySelectorAll('#list .item')].find(c => c.innerText.includes('ダミーのWebサーバー'));
     bankless.querySelector('.pass button').click();
@@ -166,6 +177,7 @@
     bankless.querySelector('.pass button').click();
     out.passHidden = text(bankless.querySelector('.pass'));
 
+    step('5');
     // 5. ドラッグで並べ替え（前へ・後ろへ）
     out.drag = {};
     out.drag.mark1 = await drag('ダミーのメモだけ', 'ダミーの管理画面', false);
@@ -175,6 +187,7 @@
     out.add.afterDrag = await add('ssh', { 'f-name': 'ダミーの新サーバー', 'f-host': 'new01.example.local', 'f-user': 'ops', 'f-pass': 'dummy-pass-NEW' });
     out.drag.afterAdd = rows().map(r => r.split(' ')[0]);
 
+    step('6');
     // 6. 編集（種類を変えると、使わない欄は空になる）・削除
     [...D.querySelectorAll('#list .item')].find(c => c.innerText.includes('ダミーの踏み台')).querySelector('button[title="編集"]').click();
     out.editOpen = { title: $('edit-title').textContent, type: D.querySelector('input[name="f-type"]:checked').value, host: $('f-host').value, port: $('f-port').value, user: $('f-user').value, level: $('f-level').value };
@@ -187,14 +200,17 @@
     out.deleteToast = toast();
     out.afterEdit = view();
 
+    step('7');
     // 7. 保存データ（この試験の中で復号して確かめる）
     out.stored = await stored(PW);
 
+    step('8');
     // 8. バックアップを保存 → 中身は保存データと同じ形式で、同じマスターパスワードで開ける
     const backup = await captureDownload(async () => { $('btn-menu').click(); $('m-export').click(); });
     out.backup = { name: backup.name, entries: norm((await decryptBlob(JSON.parse(backup.text), PW)).entries).length, toast: toast() };
     $('menu').close();
 
+    step('9');
     // 9. ロック → 違うパスワード → 正しいパスワード
     $('btn-lock').click();
     out.locked = { screen: screen(), h1: text($('lock').querySelector('h1')) };
@@ -205,6 +221,7 @@
     await until(() => screen() === 'app');
     out.unlocked = view();   // 「重要」は OFF・種類は「すべて」に戻っている
 
+    step('10');
     // 10. マスターパスワードの変更
     $('m-change').click();
     $('ask-pw1').value = PW2; $('ask-pw2').value = PW2; $('ask-form').requestSubmit();
@@ -212,6 +229,7 @@
     out.changeToast = toast();
     out.changedOpensWithNew = (await stored(PW2)).entries.length;
 
+    step('11');
     // 11. バックアップから復元（以前の形のデータ）→ 種類は Web として表示される
     const fixture = await (await fetch('fixture-vault.json', { cache: 'reload' })).text();
     const dt = new W.DataTransfer(); dt.items.add(new W.File([fixture], 'backup.json', { type: 'application/json' }));
@@ -224,6 +242,7 @@
     out.restored = view();
     importantSwitch().click(); out.restoredImportant = view(); importantSwitch().click();
 
+    step('12');
     // 12. 以前の形のデータが localStorage に入っていても、そのまま開ける
     W.localStorage.setItem(STORE_KEY, fixture);
     await load();
@@ -232,6 +251,7 @@
     await until(() => screen() === 'app');
     out.fixtureOpened = view();
 
+    step('13');
     // 13. マスターパスワードを忘れたときの初期化（消す前に、暗号化したまま保存する）
     $('btn-lock').click();
     $('lock-forgot').click();
@@ -245,10 +265,117 @@
     out.reset.storageAfter = W.localStorage.getItem(STORE_KEY);
     out.reset.screen = screen();
     out.reset.toast = toast();
+
+    step('14');
+    // 14. 保存ファイル（1.2.0）。ファイルを選ぶダイアログの代わりに、OPFS（ブラウザの中の隠れた保存場所）のファイルを渡す
+    // iframe は途中で開き直すので、OPFS の入口は試験のページから取る（同じサイトなので、同じ置き場が見える）
+    const opfs = await navigator.storage.getDirectory();
+    const opfsFile = async name => { try { await opfs.removeEntry(name); } catch {} return opfs.getFileHandle(name, { create: true }); };
+    const fileEntries = async (h, pw) => norm((await decryptBlob(JSON.parse(await (await h.getFile()).text()), pw)).entries).map(e => e.name);
+    const writeExternal = async (h, names, pw) => {   // 別の PC で変更したことにする
+      await wait(30);
+      const w = await h.createWritable();
+      await w.write(JSON.stringify(await encryptEntries(names.map((n, i) => ({ id: 'x' + i, name: n, url: '', user: '', pass: 'dummy-pass-X', level: 'normal' })), pw)));
+      await w.close();
+    };
+    const saveInfo = () => ({ text: $('save-info').textContent, warn: $('save-info').classList.contains('warn') });
+    const names = () => rows().map(r => r.split(' ')[0]);
+    out.file = {};
+    W.localStorage.removeItem(STORE_KEY); await clearHandles();
+    await load();
+    $('setup-pw1').value = PW; $('setup-pw2').value = PW; $('setup-ok').click();
+    await until(() => screen() === 'app');
+    await add('http', { 'f-name': 'ダミーのA', 'f-pass': 'dummy-pass-A' });
+    out.file.before = { saveInfo: saveInfo(), status: $('m-file-status').textContent, offDisabled: $('m-file-off').disabled };
+
+    step('14-1');
+    // 14-1. 新しいファイルに保存する → 今の中身がファイルに入る。そのあとの変更もファイルに入る
+    const fh = await opfsFile('regress-vault.json');
+    W.showSaveFilePicker = async () => fh;
+    W.showOpenFilePicker = async () => [fh];
+    $('btn-menu').click(); $('m-file-new').click();
+    await until(() => toast().includes('保存先'));
+    out.file.linked = { toast: toast(), saveInfo: saveInfo(), status: $('m-file-status').textContent, inFile: await fileEntries(fh, PW) };
+    $('menu').close();
+    await add('ssh', { 'f-name': 'ダミーのB', 'f-host': 'b.example.local', 'f-pass': 'dummy-pass-B' });
+    out.file.afterAdd = await fileEntries(fh, PW);
+
+    step('14-2');
+    // 14-2. ロックして開き直すと、ファイルから読む（このブラウザの中の写しが古くても、ファイルが正しい）
+    $('btn-lock').click();
+    out.file.lockText = $('lock-file').textContent;
+    W.localStorage.setItem(STORE_KEY, await (await fetch('fixture-vault.json', { cache: 'reload' })).text());   // 写しを別物にしておく
+    $('lock-pw').value = PW; $('lock-ok').click();
+    await until(() => screen() === 'app');
+    out.file.reopened = { names: names(), localSynced: W.localStorage.getItem(STORE_KEY) === await (await fh.getFile()).text() };
+
+    step('14-3');
+    // 14-3. ほかで変更されていたら、上書きしてよいか聞く。「キャンセル」なら上書きしない
+    await writeExternal(fh, ['ほかのPCで足したもの'], PW);
+    W.confirm = () => false;
+    await add('http', { 'f-name': 'ダミーのC', 'f-pass': 'dummy-pass-C' });
+    W.confirm = () => true;
+    out.file.conflictCancel = { toast: toast(), saveInfo: saveInfo(), inFile: await fileEntries(fh, PW) };
+    $('btn-lock').click(); $('lock-pw').value = PW; $('lock-ok').click();
+    await until(() => screen() === 'app');
+    out.file.afterCancelReopen = names();   // ファイルの内容を読み込んでいる
+    await writeExternal(fh, ['ほかのPCで足したもの', 'もう1件'], PW);
+    await add('http', { 'f-name': 'ダミーのD', 'f-pass': 'dummy-pass-D' });   // 「OK」なら上書きする
+    out.file.conflictOverwrite = { saveInfo: saveInfo(), inFile: await fileEntries(fh, PW) };
+
+    step('14-4');
+    // 14-4. ファイルが見つからないとき：写しで開く／選び直す
+    await opfs.removeEntry('regress-vault.json');
+    $('btn-lock').click(); $('lock-pw').value = PW; $('lock-ok').click();
+    await until(() => !$('lock-fallback').classList.contains('hidden'));
+    out.file.missing = { error: $('lock-error').textContent, localEnabled: !$('lock-local').disabled };
+    $('lock-local').click();
+    await until(() => screen() === 'app');
+    out.file.openedLocal = { names: names(), saveInfo: saveInfo() };
+    const fh2 = await opfsFile('regress-vault-2.json');
+    await (async () => { const w = await fh2.createWritable(); await w.write(W.localStorage.getItem(STORE_KEY)); await w.close(); })();
+    W.showOpenFilePicker = async () => [fh2];
+    $('btn-lock').click(); $('lock-pw').value = PW; $('lock-ok').click();
+    await until(() => !$('lock-fallback').classList.contains('hidden'));
+    $('lock-repick').click();
+    await until(() => screen() === 'app');
+    out.file.repicked = { names: names(), saveInfo: saveInfo() };
+
+    step('14-5');
+    // 14-5. 新しい PC・ブラウザ：最初の画面の「保存ファイルを開く」で、続きから使える
+    W.localStorage.removeItem(STORE_KEY); await clearHandles();
+    await load();
+    W.showOpenFilePicker = async () => [fh2];
+    out.file.freshScreen = { screen: screen(), fileButton: !$('setup-file').closest('.actions').classList.contains('hidden') };
+    $('setup-file').click();
+    await until(() => $('ask').open);
+    $('ask-pw1').value = PW; $('ask-form').requestSubmit();
+    await until(() => screen() === 'app');
+    out.file.freshOpened = { names: names(), saveInfo: saveInfo(), toast: toast() };
+
+    step('14-6');
+    // 14-6. ファイルへの保存をやめる（ファイルは消さない）
+    $('btn-menu').click(); $('m-file-off').click();
+    await until(() => toast().includes('やめました'));
+    out.file.off = { toast: toast(), saveInfo: saveInfo(), offDisabled: $('m-file-off').disabled, fileStillThere: (await fileEntries(fh2, PW)).length };
+    $('menu').close();
+
+    step('14-7');
+    // 14-7. 初期化すると、保存ファイルとのつながりも外れる（ファイルは消さない）
+    W.showSaveFilePicker = async () => fh2;
+    $('btn-menu').click(); $('m-file-new').click();
+    await until(() => toast().includes('保存先'));
+    $('btn-lock').click(); $('lock-forgot').click();
+    setVal('reset-confirm', '初期化する');
+    await captureDownload(async () => { $('reset-form').requestSubmit(); });
+    await load();
+    out.file.afterReset = { screen: screen(), fileStillThere: (await fileEntries(fh2, PW)).length };
+    try { await opfs.removeEntry('regress-vault-2.json'); } catch {}
   } catch (e) {
     out.error = String(e && e.stack || e);
   } finally {
     if (W) W.localStorage.removeItem(STORE_KEY);   // テストのデータを残さない
+    await clearHandles();
   }
 
   const json = JSON.stringify(out, null, 2);

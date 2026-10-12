@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ファイル保存の確認</title>
+<style>
+body{margin:0;padding:20px;background:#f6f7f9;color:#222;font-family:"Yu Gothic UI","Meiryo",sans-serif;line-height:1.7;max-width:820px}
+h1{font-size:18px;margin:0 0 8px}
+h2{font-size:15px;margin:20px 0 6px}
+button{font:inherit;padding:6px 14px;margin:4px 8px 4px 0;border:1px solid #c8cdd3;border-radius:6px;background:#fff;cursor:pointer}
+button:hover{border-color:#0969da}
+pre{background:#fff;border:1px solid #d8dce2;border-radius:6px;padding:10px;font-size:13px;white-space:pre-wrap;min-height:3em}
+.ok{color:#1a7f37;font-weight:bold}.ng{color:#cf222e;font-weight:bold}
+ol{padding-left:1.4em}
+</style>
+</head>
+<body>
+<h1>ファイル保存の確認（passnote の試作）</h1>
+<p>passnote のデータを「自分で選んだファイル」に保存できるかを確かめるページです。中身はダミーの文字だけで、passnote のデータには触れません。<br>
+<strong>このファイルをダブルクリックで開いて（file:// の形で）</strong>試してください。</p>
+
+<h2>1. このブラウザで使えるか</h2>
+<pre id="env"></pre>
+
+<h2>2. 試す手順</h2>
+<ol>
+  <li>「① ファイルを作る」を押し、保存場所を選んで保存する（名前は <code>fs-probe-test.json</code> のままでよい。<strong>passnote のフォルダ以外</strong>に）</li>
+  <li>「③ 上書きする」を何回か押す（毎回、ダイアログなしで書き込めるか）</li>
+  <li><strong>このタブを閉じて</strong>、もう一度このファイルをダブルクリックで開く</li>
+  <li>「② 覚えたファイルを読む」を押す（ブラウザが許可を聞いてきたら許可する。どんな文言だったかを控えておく）</li>
+  <li>できれば、ブラウザを全部閉じて開き直してから、もう一度 4 を試す</li>
+</ol>
+<button id="create">① ファイルを作る</button>
+<button id="read">② 覚えたファイルを読む</button>
+<button id="write">③ 上書きする</button>
+<button id="forget">覚えたファイルを忘れる</button>
+
+<h2>3. 結果</h2>
+<pre id="log"></pre>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const log = (msg, cls) => { const s = document.createElement('div'); if (cls) s.className = cls; s.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`; $('log').prepend(s); };
+
+// 使える機能
+$('env').textContent = [
+  `開き方：${location.protocol}//`,
+  `安全な場所として扱われているか（isSecureContext）：${window.isSecureContext}`,
+  `ファイルを作る機能（showSaveFilePicker）：${typeof window.showSaveFilePicker === 'function' ? 'あり' : 'なし'}`,
+  `ファイルを開く機能（showOpenFilePicker）：${typeof window.showOpenFilePicker === 'function' ? 'あり' : 'なし'}`,
+  `ファイルの覚え先（IndexedDB）：${'indexedDB' in window ? 'あり' : 'なし'}`,
+  `ブラウザ：${navigator.userAgent}`,
+].join('\n');
+
+// 「どのファイルか」を IndexedDB に覚える（中身ではなく、ファイルへの参照だけ）
+function idb() {
+  return new Promise((ok, ng) => {
+    const r = indexedDB.open('fs-probe', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('handles');
+    r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error);
+  });
+}
+async function saveHandle(h) { const db = await idb(); await new Promise((ok, ng) => { const t = db.transaction('handles', 'readwrite'); t.objectStore('handles').put(h, 'file'); t.oncomplete = ok; t.onerror = () => ng(t.error); }); }
+async function loadHandle() { const db = await idb(); return new Promise((ok, ng) => { const r = db.transaction('handles').objectStore('handles').get('file'); r.onsuccess = () => ok(r.result || null); r.onerror = () => ng(r.error); }); }
+async function clearHandle() { const db = await idb(); await new Promise(ok => { const t = db.transaction('handles', 'readwrite'); t.objectStore('handles').delete('file'); t.oncomplete = ok; }); }
+
+async function writeTo(h, note) {
+  const w = await h.createWritable();
+  await w.write(JSON.stringify({ probe: 'ダミーのデータ', note, time: new Date().toISOString() }, null, 2));
+  await w.close();
+}
+async function ensurePermission(h) {
+  let p = await h.queryPermission({ mode: 'readwrite' });
+  log(`今の許可の状態：${p}`);
+  if (p !== 'granted') { p = await h.requestPermission({ mode: 'readwrite' }); log(`許可を頼んだ結果：${p}`); }
+  return p === 'granted';
+}
+
+$('create').onclick = async () => {
+  try {
+    const h = await window.showSaveFilePicker({ suggestedName: 'fs-probe-test.json', types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }] });
+    await writeTo(h, '作ったとき');
+    await saveHandle(h);
+    log(`作って書き込みました：${h.name}。どのファイルかを覚えました`, 'ok');
+  } catch (e) { log(`できませんでした：${e.name} ${e.message}`, 'ng'); }
+};
+$('read').onclick = async () => {
+  try {
+    const h = await loadHandle();
+    if (!h) return log('覚えているファイルがありません。先に ① を押してください', 'ng');
+    log(`覚えていたファイル：${h.name}`);
+    if (!(await ensurePermission(h))) return log('許可されませんでした', 'ng');
+    const f = await h.getFile();
+    log(`読めました（最終更新 ${new Date(f.lastModified).toLocaleString()}）：${(await f.text()).replace(/\s+/g, ' ')}`, 'ok');
+  } catch (e) { log(`できませんでした：${e.name} ${e.message}`, 'ng'); }
+};
+$('write').onclick = async () => {
+  try {
+    const h = await loadHandle();
+    if (!h) return log('覚えているファイルがありません。先に ① を押してください', 'ng');
+    if (!(await ensurePermission(h))) return log('許可されませんでした', 'ng');
+    await writeTo(h, '上書き');
+    log(`上書きしました：${h.name}`, 'ok');
+  } catch (e) { log(`できませんでした：${e.name} ${e.message}`, 'ng'); }
+};
+$('forget').onclick = async () => { await clearHandle(); log('覚えていたファイルを忘れました（ファイル自体は消していません）'); };
+</script>
+</body>
+</html>
