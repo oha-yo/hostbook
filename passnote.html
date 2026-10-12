@@ -108,8 +108,11 @@
   .center .version { display: block; text-align: right; margin-top: 12px; }
   .foot { display: flex; gap: 12px; align-items: baseline; margin-top: 16px; }
   .foot .note { flex: 1; margin: 0; }
-  .save-info { font-size: 12px; color: var(--muted); white-space: nowrap; }
-  .save-info.warn { color: var(--danger); font-weight: 600; white-space: normal; }
+  /* 保存先（ブラウザが確かめた、ファイル名と最終更新日時だけを出す。フォルダの場所はブラウザが教えない） */
+  .save-bar { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; margin: -8px 0 12px; font-size: 13px; color: var(--muted); }
+  .save-info { color: var(--text); font-weight: 600; }
+  .save-info.warn { color: var(--danger); }
+  .save-time { font-size: 12px; }
   .menu-sec { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
   .menu-sec h3 { margin: 0 0 4px; font-size: 15px; }
   /* 最新の内容が保存ファイルに入っていないときのお知らせ（一覧の上） */
@@ -146,7 +149,7 @@
 <section id="lock" class="center hidden">
   <h1 class="app-name">接続情報</h1>
   <p class="note">マスターパスワードを入れてください。</p>
-  <p class="note" id="lock-file"></p>
+  <p class="note"><span id="lock-file"></span><span id="lock-file-time"></span></p>
   <label for="lock-pw">マスターパスワード</label>
   <input id="lock-pw" type="password" autocomplete="current-password">
   <div class="error" id="lock-error"></div>
@@ -168,12 +171,12 @@
     <button id="btn-menu">その他</button>
     <button id="btn-lock">ロック</button>
   </header>
+  <div class="save-bar"><span class="save-info" id="save-info"></span><span class="save-time" id="save-time"></span></div>
   <div class="notice hidden" id="notice" role="status"><span class="notice-text" id="notice-text"></span></div>
   <div class="filter" id="type-filter" role="group" aria-label="種類で絞り込む"></div>
   <div id="list" class="list"></div>
   <div class="foot">
     <p class="note" id="foot-note"></p>
-    <span class="save-info" id="save-info"></span>
     <span class="version"></span>
   </div>
 </main>
@@ -353,6 +356,11 @@ function toast(msg) {
   toast.timer = setTimeout(() => t.classList.remove('show'), 2500);
 }
 
+// 日時の書き方：10/12 21:05:33（秒を省くときは 10/12 21:05）
+function shortTime(t, seconds = true) {
+  const d = new Date(t), z = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}` + (seconds ? `:${z(d.getSeconds())}` : '');
+}
 // ファイル名に付ける日付（この PC の時刻で。toISOString は世界標準時なので、日本の朝 9 時前は前の日になってしまう）
 function today() { const d = new Date(), z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`; }
 // 文字をファイルとしてダウンロードさせる
@@ -467,6 +475,8 @@ async function forgetVaultFile() {
 function renderSaveInfo() {
   const info = $('save-info'), status = $('m-file-status');
   const name = vaultFile.handle && vaultFile.handle.name;
+  // ファイルに書けたときだけ、ファイルの最終更新日時を「最後に保存」として出す（ブラウザが確かめた値）
+  $('save-time').textContent = name && !vaultFile.unavailable && vaultFile.lastModified ? `（最後に保存：${shortTime(vaultFile.lastModified)}）` : '';
   info.classList.toggle('warn', !!(name && vaultFile.unavailable));
   info.textContent = !name ? '保存先：このブラウザの中' : vaultFile.unavailable
     ? `保存先：ファイル「${name}」に書き込めていません（このブラウザの中にだけ保存しています。ロックして開き直してください）`
@@ -605,6 +615,7 @@ function lock() {
   $('lock-fallback').classList.add('hidden');
   vaultFile.unavailable = false;
   $('lock-file').textContent = vaultFile.handle ? `保存ファイル「${vaultFile.handle.name}」を開きます。` : '';
+  showLockFileTime();
   show(store.read() || vaultFile.handle ? 'lock' : 'setup');
 }
 
@@ -634,6 +645,18 @@ $('setup-ok').onclick = async () => {
 };
 $('setup-pw2').onkeydown = e => { if (e.key === 'Enter') $('setup-ok').click(); };
 $('setup-restore').onclick = () => startImport();
+
+// ロック画面に、保存ファイルの最終更新日時を出す。許可がまだのとき（ブラウザを開き直した直後など）は読めないので出さない
+async function showLockFileTime() {
+  const h = vaultFile.handle;
+  $('lock-file-time').textContent = '';
+  if (!h) return;
+  try {
+    if (!(await filePermission(h, false))) return;
+    const f = await h.getFile();
+    if (vaultFile.handle === h) $('lock-file-time').textContent = `（最後の更新：${shortTime(f.lastModified, false)}）`;
+  } catch { /* 見つからないときなどは、開くときに知らせる */ }
+}
 
 // 開いたあとの共通の処理
 function opened() {
@@ -674,6 +697,7 @@ $('lock-repick').onclick = async () => {
   try { [handle] = await window.showOpenFilePicker({ types: FILE_TYPES }); } catch { return; }
   await useVaultFile(handle, 0);
   $('lock-file').textContent = `保存ファイル「${handle.name}」を開きます。`;
+  showLockFileTime();
   $('lock-ok').click();
 };
 // 保存ファイルが見つからないとき：このブラウザの中の写しで開く（開いている間は、ファイルには書かない）

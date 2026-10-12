@@ -656,7 +656,9 @@
       "ダミーのA",
       "ダミーのB"
     ],
+    "saveTime": true,
     "lockText": "保存ファイル「regress-vault.json」を開きます。",
+    "lockTime": true,
     "reopened": {
       "names": [
         "ダミーのA",
@@ -672,7 +674,8 @@
       },
       "inFile": [
         "ほかのPCで足したもの"
-      ]
+      ],
+      "saveTime": ""
     },
     "afterCancelReopen": [
       "ほかのPCで足したもの"
@@ -770,7 +773,8 @@
       "toast": "保存ファイル「regress-vault-3.json」に保存しました",
       "inFile": [
         "ダミーのE"
-      ]
+      ],
+      "saveTime": true
     },
     "lockDefault": "5",
     "lock1": {

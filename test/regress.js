@@ -281,6 +281,9 @@
       await w.close();
     };
     const saveInfo = () => ({ text: $('save-info').textContent, warn: $('save-info').classList.contains('warn') });
+    const z = n => String(n).padStart(2, '0');
+    const fmt = (t, sec = true) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}` + (sec ? `:${z(d.getSeconds())}` : ''); };
+    const saveTimeMatches = async h => $('save-time').textContent === `（最後に保存：${fmt((await h.getFile()).lastModified)}）`;
     const names = () => rows().map(r => r.split(' ')[0]);
     out.file = {};
     W.localStorage.removeItem(STORE_KEY); await clearHandles();
@@ -301,11 +304,14 @@
     $('menu').close();
     await add('ssh', { 'f-name': 'ダミーのB', 'f-host': 'b.example.local', 'f-pass': 'dummy-pass-B' });
     out.file.afterAdd = await fileEntries(fh, PW);
+    out.file.saveTime = await saveTimeMatches(fh);
 
     step('14-2');
     // 14-2. ロックして開き直すと、ファイルから読む（このブラウザの中の写しが古くても、ファイルが正しい）
     $('btn-lock').click();
     out.file.lockText = $('lock-file').textContent;
+    await until(() => $('lock-file-time').textContent);
+    out.file.lockTime = $('lock-file-time').textContent === `（最後の更新：${fmt((await fh.getFile()).lastModified, false)}）`;
     W.localStorage.setItem(STORE_KEY, await (await fetch('fixture-vault.json', { cache: 'reload' })).text());   // 写しを別物にしておく
     $('lock-pw').value = PW; $('lock-ok').click();
     await until(() => screen() === 'app');
@@ -317,7 +323,7 @@
     W.confirm = () => false;
     await add('http', { 'f-name': 'ダミーのC', 'f-pass': 'dummy-pass-C' });
     W.confirm = () => true;
-    out.file.conflictCancel = { toast: toast(), saveInfo: saveInfo(), inFile: await fileEntries(fh, PW) };
+    out.file.conflictCancel = { toast: toast(), saveInfo: saveInfo(), inFile: await fileEntries(fh, PW), saveTime: $('save-time').textContent };
     $('btn-lock').click(); $('lock-pw').value = PW; $('lock-ok').click();
     await until(() => screen() === 'app');
     out.file.afterCancelReopen = names();   // ファイルの内容を読み込んでいる
@@ -399,7 +405,7 @@
     out.start.unsaved = notice();
     noticeButton('今の内容でファイルに保存する').click();
     await until(() => !notice());
-    out.start.savedNow = { notice: notice(), saveInfo: saveInfo(), toast: toast(), inFile: await fileEntries(fh3, PW) };
+    out.start.savedNow = { notice: notice(), saveInfo: saveInfo(), toast: toast(), inFile: await fileEntries(fh3, PW), saveTime: await saveTimeMatches(fh3) };
 
     // 15-3. 自動ロックの時間：1〜60 分に収める。中身（保存ファイル）に入り、開き直しても残る
     $('btn-menu').click();
