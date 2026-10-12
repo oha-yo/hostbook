@@ -1,0 +1,24 @@
+# Hostbook を https://hostbook.oha-yo.com/ で公開するための設定 https://github.com/oha-yo/hostbook
+# サーバーの public_html/hostbook.oha-yo.com/ に、hostbook.html と一緒に置く。
+
+# 最初に開くファイル（名前を index.html に変えなくてよい）
+DirectoryIndex hostbook.html
+Options -Indexes
+
+# http で開かれたときや、ブログの下の URL（oha-yo.com/hostbook.oha-yo.com/）で開かれたときは、
+# https のサブドメインへ移す（ブラウザの中のデータは URL ごとに分かれるので、入口を 1 つにそろえる）
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteCond %{HTTP_HOST} !^hostbook\.oha-yo\.com$ [NC,OR]
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://hostbook.oha-yo.com/$1 [R=301,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+# 外への通信・外のファイルの読み込みを、ブラウザの側で禁止する（ページの中に書いたスクリプトと見た目だけを許す）
+Header always set Content-Security-Policy "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "no-referrer"
+# 更新したら、次に開いたときにすぐ新しい版になるようにする（毎回サーバーに変わったかを確かめる）
+Header set Cache-Control "no-cache"
+</IfModule>

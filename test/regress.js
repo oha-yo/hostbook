@@ -74,7 +74,8 @@
     const orig = W.HTMLAnchorElement.prototype.click;
     W.HTMLAnchorElement.prototype.click = function () { if (this.download) got = { name: this.download, href: this.href }; else orig.call(this); };
     try { await action(); await until(() => got, 5000); } finally { W.HTMLAnchorElement.prototype.click = orig; }
-    return { name: got.name.replace(/\d{4}-\d{2}-\d{2}/, 'YYYY-MM-DD'), text: await (await W.fetch(got.href)).text() };
+    // 中身は試験のページから読む（公開先の CSP は Hostbook の中からの読み込みを止めるため。同じサイトなので blob: も読める）
+    return { name: got.name.replace(/\d{4}-\d{2}-\d{2}/, 'YYYY-MM-DD'), text: await (await fetch(got.href)).text() };
   }
 
   // 一覧の状態

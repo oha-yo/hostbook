@@ -31,6 +31,12 @@
 - `test/fs-probe.html`（ファイルの読み書き）と `test/prf-probe.html`（顔認証のパスキーの PRF。localhost で開く）は、ブラウザの機能を確かめるための試作のページ。中身はダミーだけ。
 - `test/fixture-vault.json` は、パスワード帳のころの形のデータ（テスト用のマスターパスワード `fixture-master-789` で暗号化。中身はダミー）。保存の形式を守れているかを確かめるためのもので、作り直さない。
 
+## 公開（https://hostbook.oha-yo.com/）
+- Xserver のサブドメイン。サーバーの `public_html/hostbook.oha-yo.com/` に、`hostbook.html` と `deploy/.htaccess` の 2 つだけを置く（ユーザーが WinSCP で上げる）。
+- `.htaccess` で、最初に開くファイルを `hostbook.html` にし、http やブログの下の URL（`oha-yo.com/hostbook.oha-yo.com/`）からは https のサブドメインへ移す。CSP（`default-src 'none'`、ページの中のスクリプトと見た目だけを許す）で、外への通信を禁止している。
+- CSP があるので、Hostbook の中から `fetch` などで読み書きする処理は動かない（blob: も止められる）。そういう処理を足すときは CSP も見直す。
+- CSP を付けた状態の確かめ方：`hostbook.html` にだけ `.htaccess` の CSP（`frame-ancestors` を除く。回帰テストは iframe で開くため）を付けて配るサーバーで、回帰テストを動かす。
+
 ## 改修したら
 - `CHANGELOG.md` に版の番号と変更点を書き、`hostbook.html` の `VERSION` をそろえる（機能の追加・画面の変更はマイナー、不具合・文言の修正はパッチ）。
 - 回帰テストを動かす。
