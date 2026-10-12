@@ -1,6 +1,11 @@
-# 改修の履歴
+# 改修の履歴（Hostbook。もとは passnote）
 
 1.0.0 から、版の番号を付ける（[セマンティック バージョニング](https://semver.org/lang/ja/)：大きく変わる＝メジャー、機能の追加・画面の変更＝マイナー、不具合・文言の修正＝パッチ）。番号は `passnote.html` の `VERSION` で決め、「その他」の画面に出す。それより前は日付で記録している。
+
+## [1.4.0] - 2026-10-12
+- 名前を **Hostbook** に変えた（もとは passnote。画面の名前は「パスワード帳」→「接続情報」→「Hostbook」）。ファイル名を `passnote.html` から `hostbook.html` にした。GitHub のリポジトリも `oha-yo/hostbook` にする。
+- 新しく作る保存ファイル・バックアップの名前の初期値を `hostbook-vault.json`・`hostbook-backup-日付.json` にした。
+- 保存のキー（`pass-note-vault-v1`）・暗号化の形式の `app: 'pass-note'`・IndexedDB の名前（`pass-note`）は、passnote のころのまま変えていない。以前のデータや保存ファイル（`pass-note-…json`）も、そのまま開ける。
 
 ## [1.3.0] - 2026-10-12
 - **最初から保存ファイル**で使うようにした（Chrome・Edge）。最初の画面でマスターパスワードを決めると、続けて保存ファイルの場所を選ぶ（「はじめる（保存ファイルを作る）」）。ファイルを作らずに始めることもできる。

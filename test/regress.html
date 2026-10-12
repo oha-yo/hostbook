@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>passnote 回帰テスト</title>
+<title>Hostbook 回帰テスト</title>
 <style>
 body{margin:0;padding:16px 20px;background:#f6f7f9;color:#222;font-family:"Yu Gothic UI","Meiryo",sans-serif;line-height:1.6}
 h1{font-size:18px;margin:0 0 8px}
@@ -14,14 +14,14 @@ iframe{width:1280px;height:760px;border:1px solid #d8dce2;background:#fff}
 </style>
 </head>
 <body>
-<h1>passnote 回帰テスト</h1>
-<p>下の枠に <code>passnote.html</code> を開いて、ダミーのデータで決まった操作をし、結果を <code>expected.json</code> と比べます。<br>
-ローカルのサーバーで開いてください（例：passnote のフォルダで <code>python -m http.server 8765 --bind 127.0.0.1</code> を動かし、<code>http://localhost:8765/test/regress.html</code>）。<br>
+<h1>Hostbook 回帰テスト</h1>
+<p>下の枠に <code>hostbook.html</code> を開いて、ダミーのデータで決まった操作をし、結果を <code>expected.json</code> と比べます。<br>
+ローカルのサーバーで開いてください（例：このリポジトリのフォルダで <code>python -m http.server 8765 --bind 127.0.0.1</code> を動かし、<code>http://localhost:8765/test/regress.html</code>）。<br>
 <strong>この localhost の保存データ（テスト用）は、試験の最初と最後に消します。</strong>ふだん <code>file://</code> で開いているデータとは別の場所なので、影響はありません。<br>
 動きを意図して変えたときは、<code>?update</code> を付けて開き、出てきた JSON を <code>expected.json</code> に保存し直します。</p>
 <div class="result">実行中…（暗号化の計算があるので、数十秒かかります）</div>
 <pre class="log"></pre>
-<iframe id="app" title="試験中の passnote"></iframe>
+<iframe id="app" title="試験中の Hostbook"></iframe>
 <script src="regress.js"></script>
 </body>
 </html>

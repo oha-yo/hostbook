@@ -1,6 +1,7 @@
-# passnote の開発ルール
+# Hostbook の開発ルール
 
-ユーザー（sooni さん）が自分で使う接続情報（Web（http）・SSH・データベース（PostgreSQL））のメモ。もとは「パスワード帳」。画面の名前「接続情報」は仮称で、`APP_NAME` で決める（ファイル名・リポジトリ名・保存のキーは変えない）。`passnote.html` 1 ファイルだけで動く。
+ユーザー（sooni さん）が自分で使う接続情報（Web（http）・SSH・データベース（PostgreSQL））のメモ「**Hostbook**」。もとの名前は passnote（画面の名前は「パスワード帳」→「接続情報」）で、1.4.0 で Hostbook に変えた。画面の名前は `APP_NAME` で決める。`hostbook.html` 1 ファイルだけで動く。
+保存のキー（`pass-note-vault-v1`）・暗号化の形式の `app: 'pass-note'`・IndexedDB の名前（`pass-note`）は、すでにユーザーのデータが入っているので、passnote のころの名前のまま変えない。
 ユーザーは日本語しか読まないので、画面の文言・コメント・説明はすべて日本語にする。
 
 ## 守ること
@@ -8,12 +9,12 @@
 - **1 ファイル構成を保つ。** 外部のライブラリ・CDN・フォント・ネットへの通信は使わない（オフラインで動くこと、外に何も送らないことが前提）。
 - **保存データの互換性を壊さない。** localStorage のキー `pass-note-vault-v1` と、暗号化した形式（`app`, `v`, `iter`, `salt`, `iv`, `ct`）は、すでにユーザーのデータが入っているので変えない。形式を変える必要があるときは `v` を上げて、古い形式を読み込んで移し替える処理を書き、先にユーザーに相談する。
 - 平文（パスワードなど）は、画面を開いている間のメモリにだけ置く。localStorage やバックアップには、暗号化したものしか書かない。
-- このリポジトリは **GitHub で公開**している（`oha-yo/passnote`）。ファイル・コメント・コミットメッセージに、ユーザーの本名やローカルのパス（`C:\Users\...`）を入れない。名前が必要なら「sooni」にする。コミットの作者は、このリポジトリに設定した公開用のアドレス（`...@users.noreply.github.com`）のまま変えない。
+- このリポジトリは **GitHub で公開**している（`oha-yo/hostbook`。もとは `oha-yo/passnote`）。ファイル・コメント・コミットメッセージに、ユーザーの本名やローカルのパス（`C:\Users\...`）を入れない。名前が必要なら「sooni」にする。コミットの作者は、このリポジトリに設定した公開用のアドレス（`...@users.noreply.github.com`）のまま変えない。
 - 画面に値を入れるときは `textContent` を使い、`innerHTML` に利用者の入力を入れない（アイコンの SVG のような固定の文字列だけは可）。
 
 ## テストのやり方
 ファイルを直接開く形（`file://`）では、プレビューで暗号化やクリップボードが使えないので、ローカルのサーバーで確認する。
-1. Browser の `preview_start` で `passnote-dev`（`.claude/launch.json`）を起動し、`http://localhost:8765/passnote.html` を開く。
+1. Browser の `preview_start` で `hostbook-dev`（`.claude/launch.json`）を起動し、`http://localhost:8765/hostbook.html` を開く。
 2. テスト用のマスターパスワードで始めて、ダミーのデータを登録して確かめる。
 3. 終わったら、`localStorage.removeItem('pass-note-vault-v1')` でテストのデータを消し、サーバーを止める。
 
@@ -21,8 +22,8 @@
 
 ### 回帰テスト
 直したら、ほかの動きが変わっていないかを `test/regress.html` で確かめる。
-1. passnote のフォルダで `python -m http.server 8765 --bind 127.0.0.1` を動かし、`http://localhost:8765/test/regress.html` を開く。
-2. iframe の中で passnote を自動で操作し、結果を `test/expected.json` と比べる（暗号化の計算があるので数十秒かかる）。「OK：38 項目すべて同じです」なら変わっていない。
+1. このリポジトリのフォルダで `python -m http.server 8765 --bind 127.0.0.1` を動かし、`http://localhost:8765/test/regress.html` を開く。
+2. iframe の中で Hostbook を自動で操作し、結果を `test/expected.json` と比べる（暗号化の計算があるので数十秒かかる）。「OK：38 項目すべて同じです」なら変わっていない。
 3. 試験は画面の部品の id（`btn-add`、`edit-form`、`search`、`type-filter` など）を使って操作する。id を変えるときは `test/regress.js` も直す。
 4. 動きを**意図して**変えたときは、`regress.html?update` を開いて、出てきた JSON を `test/expected.json` に保存し直す。
 - 保存ファイル（File System Access API）の試験は、ファイルを選ぶダイアログを `showSaveFilePicker`・`showOpenFilePicker` の差し替えで飛ばし、OPFS のファイルを「選ばれたファイル」として渡して行う。ふだんは「キャンセルされた」ことにしてあり、最初の画面は「保存ファイルを作らずに始める」流れで進む。
@@ -31,6 +32,6 @@
 - `test/fixture-vault.json` は、パスワード帳のころの形のデータ（テスト用のマスターパスワード `fixture-master-789` で暗号化。中身はダミー）。保存の形式を守れているかを確かめるためのもので、作り直さない。
 
 ## 改修したら
-- `CHANGELOG.md` に版の番号と変更点を書き、`passnote.html` の `VERSION` をそろえる（機能の追加・画面の変更はマイナー、不具合・文言の修正はパッチ）。
+- `CHANGELOG.md` に版の番号と変更点を書き、`hostbook.html` の `VERSION` をそろえる（機能の追加・画面の変更はマイナー、不具合・文言の修正はパッチ）。
 - 回帰テストを動かす。
 - 使い方が変わったら `README.md` も直す。

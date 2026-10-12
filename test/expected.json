@@ -1,8 +1,8 @@
 {
-  "title": "接続情報",
+  "title": "Hostbook",
   "first": {
     "screen": "setup",
-    "h1": "接続情報をはじめる"
+    "h1": "Hostbook をはじめる"
   },
   "setupShort": "8 文字以上にしてください。",
   "setupMismatch": "2 つの入力が一致しません。",
@@ -545,13 +545,13 @@
     ]
   },
   "backup": {
-    "name": "pass-note-backup-YYYY-MM-DD.json",
+    "name": "hostbook-backup-YYYY-MM-DD.json",
     "entries": 8,
     "toast": "バックアップを保存しました"
   },
   "locked": {
     "screen": "lock",
-    "h1": "接続情報"
+    "h1": "Hostbook"
   },
   "wrongPw": "パスワードが違います",
   "unlocked": {
@@ -626,7 +626,7 @@
     "disabled0": true,
     "disabledWrong": true,
     "disabledRight": false,
-    "file": "pass-note-backup-before-reset-YYYY-MM-DD.json",
+    "file": "hostbook-backup-before-reset-YYYY-MM-DD.json",
     "sameAsStored": true,
     "storageAfter": null,
     "screen": "setup",

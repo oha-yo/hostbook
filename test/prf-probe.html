@@ -17,9 +17,9 @@ code{background:#eef1f4;padding:0 4px;border-radius:3px}
 </style>
 </head>
 <body>
-<h1>顔認証（パスキーの PRF）の確認（passnote の試作）</h1>
-<p>passnote を「顔認証で開く」ために必要な、パスキーの <strong>PRF</strong>（顔認証を通ったときだけ、毎回同じ秘密の値を取り出す機能）が、この PC と iPhone で使えるかを確かめるページです。<br>
-中身はダミーだけで、passnote のデータには触れません。<strong>localhost（ローカルのサーバー）で開いてください。</strong></p>
+<h1>顔認証（パスキーの PRF）の確認（Hostbook の試作）</h1>
+<p>Hostbook を「顔認証で開く」ために必要な、パスキーの <strong>PRF</strong>（顔認証を通ったときだけ、毎回同じ秘密の値を取り出す機能）が、この PC と iPhone で使えるかを確かめるページです。<br>
+中身はダミーだけで、Hostbook のデータには触れません。<strong>localhost（ローカルのサーバー）で開いてください。</strong></p>
 
 <h2>1. このブラウザで使えるか</h2>
 <pre id="env">調べています…</pre>
@@ -48,7 +48,7 @@ const rand = n => crypto.getRandomValues(new Uint8Array(n));
 const toB64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const fromB64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
 const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-// PRF に渡す「塩」。passnote では、保存ファイルごとに決める値になる
+// PRF に渡す「塩」。Hostbook では、保存ファイルごとに決める値になる
 const SALT = new TextEncoder().encode('passnote-prf-probe-salt-v1');
 const KEY_STORE = 'prf-probe-credentials';   // 試験用：登録した鍵の番号だけを覚えておく（秘密ではない）
 
@@ -121,7 +121,7 @@ $('getPrf').onclick = async () => {
     const v = hex(out);
     const same = lastValues[cred.id] ? (lastValues[cred.id] === v ? '前回と同じ値です（使える）' : '前回と違う値です（おかしい）') : '1 回目です。もう一度押して、同じ値が出るか確かめてください';
     lastValues[cred.id] = v;
-    // 取り出した値で鍵を作り、ダミーの文字を暗号化して戻せるかを確かめる（passnote ではこの鍵でデータの鍵を包む）
+    // 取り出した値で鍵を作り、ダミーの文字を暗号化して戻せるかを確かめる（Hostbook ではこの鍵でデータの鍵を包む）
     const key = await crypto.subtle.importKey('raw', await crypto.subtle.digest('SHA-256', out), 'AES-GCM', false, ['encrypt', 'decrypt']);
     const iv = rand(12);
     const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode('ダミーの中身'));

@@ -1,9 +1,9 @@
-// passnote の回帰テスト。iframe に passnote.html を開き、画面の操作（ボタン・入力）だけで決まった手順を行い、
+// Hostbook の回帰テスト。iframe に hostbook.html を開き、画面の操作（ボタン・入力）だけで決まった手順を行い、
 // 画面の状態と保存データを記録して expected.json と比べる。
-// passnote の中の変数や関数の名前には頼らない（中身を整理しても、同じ試験で確かめられるように）。
-// 保存データは、この試験の中の復号の処理で開く（保存の形式が守られているかを、passnote の外から確かめるため）。
+// Hostbook の中の変数や関数の名前には頼らない（中身を整理しても、同じ試験で確かめられるように）。
+// 保存データは、この試験の中の復号の処理で開く（保存の形式が守られているかを、Hostbook の外から確かめるため）。
 (async () => {
-  const STORE_KEY = 'pass-note-vault-v1';
+  const STORE_KEY = 'pass-note-vault-v1';   // 保存のキーは passnote のころの名前のまま
   const PW = 'test-master-123', PW2 = 'test-master-456', FIXTURE_PW = 'fixture-master-789';
   const frame = document.getElementById('app');
   const log = document.querySelector('.log'), result = document.querySelector('.result');
@@ -11,7 +11,7 @@
   let W, D;
   const $ = id => D.getElementById(id);
 
-  // ---- 暗号化（passnote と同じ形式：AES-GCM 256bit、鍵は PBKDF2-SHA256） ----
+  // ---- 暗号化（Hostbook と同じ形式：AES-GCM 256bit、鍵は PBKDF2-SHA256） ----
   const toB64 = bytes => btoa(String.fromCharCode(...bytes));
   const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
   async function keyFor(pw, salt, iter) {
@@ -49,7 +49,7 @@
 
   // ---- 画面の操作 ----
   async function load() {
-    frame.src = '../passnote.html?t=' + Date.now();
+    frame.src = '../hostbook.html?t=' + Date.now();
     await new Promise(f => frame.onload = f);
     W = frame.contentWindow; D = W.document;
     W.confirm = () => true;   // 削除・復元・「保存ファイルを作らずに始める」の確認は「はい」
