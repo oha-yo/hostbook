@@ -399,6 +399,32 @@
   "editSwitchedPort": "2222",
   "editToast": "保存しました",
   "deleteToast": "削除しました",
+  "copyBefore": {
+    "copyShown": true
+  },
+  "copyOpen": {
+    "title": "追加（「ダミーのWebサーバー」を複製）",
+    "name": "ダミーのWebサーバー（コピー）",
+    "user": "deploy2",
+    "pass": "dummy-pass-SSH",
+    "host": "web01.example.local",
+    "type": "ssh",
+    "deleteShown": false,
+    "copyShown": false
+  },
+  "copyToast": "保存しました",
+  "copyRows": [
+    "ダミーのメモだけ",
+    "ダミーの管理画面",
+    "ダミーの受注DB",
+    "ダミーのWebサーバー",
+    "ダミーのWebサーバー（コピー）",
+    "ダミーの踏み台"
+  ],
+  "copyStored": [
+    "ダミーのWebサーバー|deploy|dummy-pass-SSH|web01.example.local",
+    "ダミーのWebサーバー（コピー）|deploy2|dummy-pass-SSH|web01.example.local"
+  ],
   "afterEdit": {
     "screen": "app",
     "filters": [
@@ -465,7 +491,7 @@
         "level": "low",
         "memo": "",
         "name": "ダミーの踏み台",
-        "order": 7,
+        "order": 8,
         "pass": "dummy-pass-BAS",
         "port": "2222",
         "type": "db",

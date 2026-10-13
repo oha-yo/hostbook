@@ -226,6 +226,7 @@
     <textarea id="f-memo" rows="3"></textarea>
     <div class="actions">
       <button type="button" class="danger" id="edit-delete">削除</button>
+      <button type="button" id="edit-copy" title="この内容で、新しく追加する（パスワードも引き継ぐ）">複製</button>
       <span style="flex:1"></span>
       <button type="button" id="edit-cancel">キャンセル</button>
       <button type="submit" class="primary">保存</button>
@@ -305,7 +306,7 @@
 // 暗号化したものだけを localStorage に保存する。平文は画面を開いている間のメモリにしか置かない。
 // https://github.com/oha-yo/hostbook
 const APP_NAME = 'Hostbook';             // 画面に出す名前。変えるときはここだけ直す（もとは passnote・接続情報）
-const VERSION = '1.4.0';                 // 変えたら CHANGELOG.md もそろえる
+const VERSION = '1.5.0';                 // 変えたら CHANGELOG.md もそろえる
 const STORE_KEY = 'pass-note-vault-v1';   // 保存のキーは、すでにデータが入っているので変えない（passnote のころの名前のまま）
 const ITERATIONS = 600000;
 const CLIPBOARD_CLEAR_MS = 30000;
@@ -941,6 +942,7 @@ function copyButton(text, what, clearLater, hint) {
 
 // ---- 追加・編集 ----
 let editing = null;
+let copiedFrom = null;   // 複製して追加しているときの、もとの1件（保存すると、そのすぐ下に入れる）
 const fields = { name: 'f-name', url: 'f-url', host: 'f-host', port: 'f-port', db: 'f-db', user: 'f-user', pass: 'f-pass', category: 'f-cat', level: 'f-level', memo: 'f-memo' };
 const checkedType = () => (document.querySelector('input[name="f-type"]:checked') || {}).value || 'http';
 // 種類に合わせて、入力欄を出し分ける。ポートが空か、ほかの種類の初期値のままなら、この種類の初期値にする
@@ -955,8 +957,10 @@ function setPassShown(on) { $('f-pass').type = on ? 'text' : 'password'; $('f-pa
 
 function openEdit(x) {
   editing = x || null;
+  copiedFrom = null;
   $('edit-title').textContent = x ? '編集' : '追加';
   $('edit-delete').classList.toggle('hidden', !x);
+  $('edit-copy').classList.toggle('hidden', !x);
   for (const [k, id] of Object.entries(fields)) $(id).value = (x && x[k]) || (k === 'level' ? 'normal' : '');
   // 追加のときは、今の表示に合わせて始める（種類で絞り込んでいればその種類、「重要」が ON なら重要）
   const t = x ? typeOf(x) : (view.type || 'http');
@@ -967,6 +971,16 @@ function openEdit(x) {
   $('edit').showModal();
 }
 $('btn-add').onclick = () => openEdit(null);
+// 複製：画面に入っている内容（直しかけのものも含む）のまま、追加に切り替える。もとの1件は変えない
+$('edit-copy').onclick = () => {
+  if (!editing) return;
+  copiedFrom = editing; editing = null;
+  $('edit-title').textContent = `追加（「${copiedFrom.name}」を複製）`;
+  $('edit-delete').classList.add('hidden');
+  $('edit-copy').classList.add('hidden');
+  $('f-name').value = $('f-name').value.trim() + '（コピー）';
+  $('f-name').focus(); $('f-name').select();
+};
 $('edit-cancel').onclick = () => $('edit').close();
 $('f-pass-show').onclick = () => setPassShown($('f-pass').type === 'password');
 $('f-pass-gen').onclick = () => {
@@ -984,7 +998,14 @@ $('edit-form').onsubmit = async e => {
   for (const k of TYPE_FIELDS) if (!TYPES[data.type].fields.includes(k)) data[k] = '';   // この種類で使わない欄は空にする
   if (!data.name) return;
   if (editing) Object.assign(editing, data, { updated: new Date().toISOString() });
-  else {
+  else if (copiedFrom && session.entries.includes(copiedFrom) && Number.isFinite(copiedFrom.order)) {
+    // 並べ替えたことがあるときは、もとの1件のすぐ下に入れて、順番を振り直す（並べ替える前なら、分類 → 名前の順でもとの近くに並ぶ）
+    const item = { id: crypto.randomUUID(), ...data, created: new Date().toISOString() };
+    const all = [...session.entries].sort(byOrder);
+    all.splice(all.indexOf(copiedFrom) + 1, 0, item);
+    all.forEach((x, i) => { x.order = i; });
+    session.entries.push(item);
+  } else {
     // 並べ替えたことがあるときは、一番下に入るよう順番を付ける
     const orders = session.entries.map(x => x.order).filter(Number.isFinite);
     session.entries.push({ id: crypto.randomUUID(), ...data, created: new Date().toISOString(), ...(orders.length ? { order: Math.max(...orders) + 1 } : {}) });

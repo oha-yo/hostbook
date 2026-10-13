@@ -201,6 +201,20 @@
     [...D.querySelectorAll('#list .item')].find(c => c.innerText.includes('ダミーの新サーバー')).querySelector('button[title="編集"]').click();
     $('edit-delete').click(); await until(() => !$('edit').open);
     out.deleteToast = toast();
+    // 複製：直しかけの内容ごと追加に切り替わり、もとの1件は変わらない。並べ替えたあとなので、もとのすぐ下に入る。確かめたら消す
+    const editBtn = n => [...D.querySelectorAll('#list .item')].find(c => c.querySelector('.name').innerText === n).querySelector('button[title="編集"]');
+    editBtn('ダミーのWebサーバー').click();
+    out.copyBefore = { copyShown: !$('edit-copy').classList.contains('hidden') };
+    $('f-user').value = 'deploy2';
+    $('edit-copy').click();
+    out.copyOpen = { title: $('edit-title').textContent, name: $('f-name').value, user: $('f-user').value, pass: $('f-pass').value, host: $('f-host').value, type: D.querySelector('input[name="f-type"]:checked').value,
+      deleteShown: !$('edit-delete').classList.contains('hidden'), copyShown: !$('edit-copy').classList.contains('hidden') };
+    $('edit-form').requestSubmit(); await until(() => !$('edit').open);
+    out.copyToast = toast();
+    out.copyRows = rows().map(r => r.split(' ')[0]);
+    out.copyStored = (await stored(PW)).entries.filter(x => x.name.startsWith('ダミーのWebサーバー')).map(x => `${x.name}|${x.user}|${x.pass}|${x.host}`);
+    editBtn('ダミーのWebサーバー（コピー）').click();
+    $('edit-delete').click(); await until(() => !$('edit').open);
     out.afterEdit = view();
 
     step('7');
